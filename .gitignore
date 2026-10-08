@@ -1,2 +1,3 @@
 data/*
 !data/bauru_limpo.csv
+__pycache__/*
