@@ -1,0 +1,58 @@
+name: Atualização Automática InfoSiga
+
+on:
+  schedule:
+    # Executa às 23:00 UTC (20:00 de Brasília) no dia 28 a 31 de cada mês
+    # e uma condicional verifica se amanhã já é dia 1º (ou seja, se hoje é o último dia do mês)
+    - cron: '0 23 28-31 * *'
+  workflow_dispatch: # Permite que você também dispare manualmente pelo botão no GitHub se quiser
+
+jobs:
+  atualizar-dados:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar o Repositório
+        uses: actions/checkout@v4
+
+      - name: Verificar se hoje é o último dia do mês
+        id: check_last_day
+        run: |
+          TOMORROW_DAY=$(date -u -d "tomorrow" +%d)
+          if [ "$TOMORROW_DAY" = "01" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "is_last_day=true" >> $GITHUB_OUTPUT
+            echo "Hoje é o último dia do mês! Prosseguindo com a execução."
+          else
+            echo "is_last_day=false" >> $GITHUB_OUTPUT
+            echo "Hoje não é o último dia do mês. Encerrando."
+          fi
+
+      - name: Configurar Python
+        if: steps.check_last_day.outputs.is_last_day == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar Dependências
+        if: steps.check_last_day.outputs.is_last_day == 'true'
+        run: |
+          pip install --upgrade pip
+          pip install pandas numpy
+
+      - name: Executar Pipeline de Atualização
+        if: steps.check_last_day.outputs.is_last_day == 'true'
+        run: |
+          python scripts/atualizar_dados_infosiga.py --automatico
+
+      - name: Salvar e Publicar Alterações no Repositório
+        if: steps.check_last_day.outputs.is_last_day == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/bauru_limpo.csv output/relatorios/resumo_anual_bauru.csv
+          if git diff --staged --quiet; then
+            echo "Nenhum dado novo encontrado para commitar."
+          else
+            git commit -m "chore(data): atualização automática mensal dos dados do InfoSiga [skip ci]"
+            git push origin main
+          fi
