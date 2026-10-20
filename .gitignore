@@ -1,3 +1,7 @@
 data/*
 !data/bauru_limpo.csv
-__pycache__/*
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.crivo/
+.venv/

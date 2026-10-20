@@ -1,0 +1,33 @@
+name: Streamlit Keep-Alive
+
+on:
+  schedule:
+    # Execução a cada 12 horas (exemplo: diariamente às 12:00 UTC)
+    - cron: '0 12 * * *'
+  workflow_dispatch: # Permite disparo manual via interface do GitHub Actions
+
+jobs:
+  keep-alive:
+    name: Prevenir Modo Sleep do Streamlit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar o Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar Dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install "selenium>=4.15.0"
+
+      - name: Executar Keep-Alive no Streamlit Community Cloud
+        env:
+          STREAMLIT_APP_URL: ${{ secrets.STREAMLIT_APP_URL || 'https://observatoriotransitobauru.streamlit.app' }}
+        run: |
+          python src/keep_alive_streamlit.py
