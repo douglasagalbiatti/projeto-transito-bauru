@@ -12,7 +12,7 @@ import pandas as pd
 
 from scripts import gerar_artefatos
 from src.indicadores import calcular_indicadores
-from src.metricas import br, ler_artefato
+from src.metricas import br, ler_artefato, ranking_vias
 from src.modelo import treinar_modelo
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -101,6 +101,20 @@ class TestArtefatos(unittest.TestCase):
         readme = self._readme(self.indicadores)
         for nome in gerar_artefatos.NOTEBOOKS:
             self.assertIn(f"blob/artefatos/output/notebooks/{nome}", readme)
+
+    def test_ranking_de_vias_desempata_sempre_igual(self):
+        df = pd.DataFrame({
+            "id_sinistro": range(7),
+            "logradouro": ["RUA B", "RUA A", "RUA C", "RUA C", "RUA D", "RUA D", "RUA D"],
+            "obitos": [5, 5, 3, 2, 1, 2, 2],
+            "feridos_graves": [0] * 7,
+            "feridos_leves": [0] * 7,
+        })
+        for ordem in (df, df.iloc[::-1]):
+            por_obitos = ranking_vias(ordem, por="obitos")["logradouro"].tolist()
+            self.assertEqual(por_obitos, ["RUA D", "RUA C", "RUA A", "RUA B"])
+            por_sinistros = ranking_vias(ordem, por="sinistros")["logradouro"].tolist()
+            self.assertEqual(por_sinistros, ["RUA D", "RUA C", "RUA A", "RUA B"])
 
     def test_workflow_publica_antes_do_commit_e_nao_versiona_graficos(self):
         with open(os.path.join(RAIZ, ".github", "workflows", "atualizar_infosiga.yml"), encoding="utf-8") as arquivo:

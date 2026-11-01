@@ -143,7 +143,7 @@ def normalizar_via(logradouro: pd.Series) -> pd.Series:
 
 
 def ranking_vias(df: pd.DataFrame, n: int = 10, por: str = "sinistros") -> pd.DataFrame:
-    """Vias com mais registros ou óbitos; contagem bruta, sem fluxo de veículos."""
+    """Vias com mais registros ou óbitos, com desempate fixo; contagem bruta, sem fluxo de veículos."""
     vias = normalizar_via(df["logradouro"][df["logradouro"].notna()])
     tabela = df.loc[vias.index].groupby(vias).agg(
         sinistros=("id_sinistro", "count"),
@@ -151,4 +151,6 @@ def ranking_vias(df: pd.DataFrame, n: int = 10, por: str = "sinistros") -> pd.Da
         feridos_graves=("feridos_graves", "sum"),
         feridos_leves=("feridos_leves", "sum"),
     )
-    return tabela.sort_values(por, ascending=False).head(n).rename_axis("logradouro").reset_index()
+    desempate = "obitos" if por == "sinistros" else "sinistros"
+    tabela = tabela.rename_axis("logradouro").reset_index()
+    return tabela.sort_values([por, desempate, "logradouro"], ascending=[False, False, True]).head(n).reset_index(drop=True)
