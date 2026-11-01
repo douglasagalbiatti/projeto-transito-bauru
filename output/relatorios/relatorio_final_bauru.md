@@ -85,7 +85,7 @@ A letalidade por sinistro é maior nas rodovias (6,5%) do que nas vias urbanas (
 | AVENIDA RODRIGUES ALVES | 9 | 343 | 39 |
 | AVENIDA CRUZEIRO DO SUL | 9 | 198 | 11 |
 | AVENIDA DUQUE DE CAXIAS | 7 | 375 | 25 |
-| AVENIDA CASTELO BRANCO QUADRA | 5 | 218 | 15 |
+| AVENIDA COMENDADOR JOSE DA SILVA MARTA | 5 | 135 | 7 |
 
 Os rankings excluem notificações e são contagens brutas, sem fluxo de veículos.
 
