@@ -281,7 +281,10 @@ ax2.set_ylabel('Óbitos', color='#d9383a')
 ax2.set_ylim(0, resumo_anual['obitos'].max() * 1.3)
 ax2.grid(False)
 
-plt.title('Registros e Óbitos em Bauru/SP')
+fim = pd.to_datetime(df['data_sinistro_dt']).max()
+# O ano do último registro só está completo se os dados chegam a 31/12
+aviso_parcial = f"; {fim.year} só tem dados até {fim:%m/%Y}" if (fim + pd.Timedelta(days=1)).year == fim.year else ""
+plt.title(f"Registros e Óbitos em Bauru/SP\\nAté 2018 só há sinistros fatais{aviso_parcial}")
 plt.tight_layout()
 plt.show()"""),
 
