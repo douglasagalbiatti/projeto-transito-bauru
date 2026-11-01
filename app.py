@@ -4,6 +4,7 @@ Desenvolvido com Streamlit, Plotly e Scikit-Learn
 Dados: Infosiga SP (Movimento Paulista de Segurança no Trânsito)
 """
 
+import html
 import os
 import io
 import pandas as pd
@@ -187,9 +188,19 @@ def load_resumo():
         return pd.read_csv(RESUMO_FILE, sep=';', encoding='utf-8')
     return pd.DataFrame()
 
+# A falha vira exceção porque o cache não a guarda: a próxima visita tenta de novo
 @st.cache_data(ttl="1h", show_spinner="Carregando arquivo gerado...")
+def baixar_artefato(nome):
+    conteudo = ler_artefato(nome)
+    if conteudo is None:
+        raise FileNotFoundError(nome)
+    return conteudo
+
 def carregar_artefato(nome):
-    return ler_artefato(nome)
+    try:
+        return baixar_artefato(nome)
+    except FileNotFoundError:
+        return None
 
 @st.cache_resource(ttl="1h", show_spinner="Treinando o modelo exploratório...")
 def get_ml_model():
@@ -1077,7 +1088,7 @@ with tab7:
             <h4 style="color: #60a5fa; margin-bottom: 8px;">4. Motociclistas nas Vias com Mais Registros</h4>
             <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">
                 • <strong>Evidência:</strong> Há motocicleta em {br(com_modal_informado(df_completo)['envolve_moto'].mean() * 100, 1)}% dos registros com modal informado. A base não mede o risco individual do motociclista.<br>
-                • <strong>Possíveis medidas:</strong> Avaliar faixas azuis e áreas de espera em semáforos nas vias e horários com mais registros, como a {indicadores['via_motos_urbana']}, a via urbana com mais sinistros com moto, com estudo de fluxo.
+                • <strong>Possíveis medidas:</strong> Avaliar faixas azuis e áreas de espera em semáforos nas vias e horários com mais registros, como a {html.escape(indicadores['via_motos_urbana'])}, a via urbana com mais sinistros com moto, com estudo de fluxo.
             </p>
         </div>
         """, unsafe_allow_html=True)

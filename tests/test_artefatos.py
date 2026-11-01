@@ -1,5 +1,6 @@
 """Testes dos indicadores e do README gerado a partir deles."""
 
+import ast
 import os
 import re
 import tempfile
@@ -9,6 +10,7 @@ from urllib.error import URLError
 
 import nbformat
 import pandas as pd
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from scripts import gerar_artefatos
@@ -136,6 +138,18 @@ class TestArtefatos(unittest.TestCase):
         textos = " ".join(bloco.value for bloco in painel.markdown)
         self.assertIn(self.indicadores["via_motos_urbana"], textos)
         self.assertIn(self.indicadores["frase_choque_urbano"], textos)
+
+    def test_painel_nao_guarda_falha_de_download_no_cache(self):
+        with open(os.path.join(RAIZ, "app.py"), encoding="utf-8") as arquivo:
+            arvore = ast.parse(arquivo.read())
+        funcoes = [no for no in arvore.body if getattr(no, "name", "") in ("baixar_artefato", "carregar_artefato")]
+        respostas = [None, b"imagem", b"outra"]
+        ambiente = {"st": st, "ler_artefato": lambda nome: respostas.pop(0)}
+        exec(compile(ast.Module(funcoes, []), "app.py", "exec"), ambiente)
+        st.cache_data.clear()
+        self.assertIsNone(ambiente["carregar_artefato"]("teste.png"))
+        self.assertEqual(ambiente["carregar_artefato"]("teste.png"), b"imagem")
+        self.assertEqual(ambiente["carregar_artefato"]("teste.png"), b"imagem")
 
     def test_workflow_publica_antes_do_commit_e_nao_versiona_graficos(self):
         with open(os.path.join(RAIZ, ".github", "workflows", "atualizar_infosiga.yml"), encoding="utf-8") as arquivo:
