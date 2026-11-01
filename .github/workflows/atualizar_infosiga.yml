@@ -7,7 +7,7 @@ on:
     - cron: '0 23 28-31 * *'
   workflow_dispatch: # Permite que você também dispare manualmente pelo botão no GitHub se quiser
 
-# Permite que o robô do GitHub Actions publique a base atualizada
+# Permite que o robô do GitHub Actions publique a base e os arquivos gerados
 permissions:
   contents: write
 
@@ -41,22 +41,47 @@ jobs:
         if: steps.check_last_day.outputs.is_last_day == 'true'
         run: |
           pip install --upgrade pip
-          pip install pandas numpy
+          pip install -r requirements.txt
 
       - name: Executar Pipeline de Atualização
         if: steps.check_last_day.outputs.is_last_day == 'true'
         run: |
           python scripts/atualizar_dados_infosiga.py --automatico
 
-      - name: Salvar e Publicar Alterações no Repositório
+      # Sem dados novos, só regenera em disparo manual ou se a branch de artefatos ainda não existir
+      - name: Verificar se há o que Gerar
         if: steps.check_last_day.outputs.is_last_day == 'true'
+        id: check_dados
+        run: |
+          if ! git diff --quiet data/bauru_limpo.csv output/relatorios/resumo_anual_bauru.csv \
+            || [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+            || [ -z "$(git ls-remote --heads origin artefatos)" ]; then
+            echo "gerar=true" >> $GITHUB_OUTPUT
+          else
+            echo "gerar=false" >> $GITHUB_OUTPUT
+            echo "Nenhum dado novo encontrado."
+          fi
+
+      - name: Gerar Gráficos, Mapa, Relatório e README
+        if: steps.check_dados.outputs.gerar == 'true'
+        run: |
+          python scripts/gerar_artefatos.py
+
+      # Publica antes do commit, para que o README novo nunca aponte para arquivos que ainda não existem
+      - name: Publicar Arquivos Gerados na Branch de Artefatos
+        if: steps.check_dados.outputs.gerar == 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/bauru_limpo.csv output/relatorios/resumo_anual_bauru.csv
+          bash scripts/publicar_artefatos.sh
+
+      - name: Salvar e Publicar Alterações no Repositório
+        if: steps.check_dados.outputs.gerar == 'true'
+        run: |
+          git add data/bauru_limpo.csv output/relatorios/resumo_anual_bauru.csv output/relatorios/relatorio_final_bauru.md README.md
           if git diff --staged --quiet; then
-            echo "Nenhum dado novo encontrado para commitar."
+            echo "Nenhuma alteração para commitar."
           else
-            git commit -m "chore(data): atualização automática mensal dos dados do InfoSiga [skip ci]"
+            git commit -m "chore(data): atualização automática de dados e documentos [skip ci]"
             git push origin main
           fi

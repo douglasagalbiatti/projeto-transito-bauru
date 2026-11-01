@@ -1,4 +1,9 @@
-"""Gera gráficos, mapa e relatório a partir de data/bauru_limpo.csv."""
+"""
+Gera gráficos, mapa, relatório e README a partir de data/bauru_limpo.csv.
+
+Os gráficos e o mapa não são versionados na main:
+'scripts/publicar_artefatos.sh' os publica na branch 'artefatos'.
+"""
 
 import os
 import sys
@@ -9,21 +14,19 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.express as px
 import seaborn as sns
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
+from src.indicadores import calcular_indicadores
 from src.metricas import (
     CORES_SEVERIDADE,
     ORDEM_SEVERIDADE,
-    SEM_FERIDOS,
-    SEM_INFORMACAO,
+    URL_ARTEFATOS,
     base_comparavel,
     br,
     com_modal_informado,
-    comparar_dias,
-    normalizar_via,
     ranking_vias,
-    razao_letalidade,
     tabela_letalidade,
 )
 from src.modelo import treinar_modelo
@@ -31,8 +34,9 @@ from src.modelo import treinar_modelo
 DATA_FILE = os.path.join(BASE_DIR, "data", "bauru_limpo.csv")
 GRAFICOS_DIR = os.path.join(BASE_DIR, "output", "graficos")
 RELATORIO_MD = os.path.join(BASE_DIR, "output", "relatorios", "relatorio_final_bauru.md")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+README_MD = os.path.join(BASE_DIR, "README.md")
 ORDEM_DIAS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
-RODOVIAS_PRINCIPAIS = ["SP 300", "SP 225", "SP 294"]
 NOMES_FEATURES = {
     "hora_num": "Hora do sinistro",
     "envolve_moto": "Motocicleta presente",
@@ -58,7 +62,7 @@ def salvar(fig, nome):
     plt.close(fig)
 
 
-def grafico_anual(df):
+def grafico_anual(df, ano_parcial):
     resumo = df.groupby("ano").agg(
         sinistros=("tipo_registro", lambda s: int((s != "NOTIFICACAO").sum())),
         notificacoes=("tipo_registro", lambda s: int((s == "NOTIFICACAO").sum())),
@@ -82,7 +86,8 @@ def grafico_anual(df):
     ax1.legend(linhas[0][0] + linhas[1][0], linhas[0][1] + linhas[1][1], loc="upper left")
     ax1.set_title(
         f"Registros e óbitos em Bauru/SP, até {pd.to_datetime(df['data_sinistro_dt']).max():%m/%Y}\n"
-        "Até 2018 só há sinistros fatais; a proporção de notificações varia por ano e o último ano é parcial",
+        "Até 2018 só há sinistros fatais; a proporção de notificações varia por ano"
+        + (" e o último ano é parcial" if ano_parcial else ""),
         fontweight="bold",
     )
     salvar(fig, "acidentes_por_ano.png")
@@ -192,76 +197,55 @@ def tabela_markdown(linhas, colunas):
     return f"| {' | '.join(colunas)} |\n{alinhamento}\n{corpo}"
 
 
-def gerar_relatorio(df, resultado):
-    comparavel = base_comparavel(df)
-    datas = pd.to_datetime(df["data_sinistro_dt"])
-    teste = comparar_dias(df[df["ano"] >= 2019])
-    por_dia = teste["media_por_dia"]
-    dias_resto = por_dia[[0, 1, 2, 3, 6]].mean()
-    letalidade = tabela_letalidade(comparavel)
-    taxa = letalidade.set_index("tipo_sinistro_simplificado")["letalidade_pct"]
-    choque_colisao = razao_letalidade(comparavel, "CHOQUE", "COLISAO")
-    atrop_choque = razao_letalidade(comparavel, "ATROPELAMENTO", "CHOQUE")
-    urbano = comparavel[comparavel["tipo_via"] == "VIAS URBANAS"]
-    rodovia = comparavel[comparavel["tipo_via"] == "ESTRADAS E RODOVIAS"]
-    choque_urbano = razao_letalidade(urbano, "CHOQUE", "COLISAO")
-    choque_rodovia = razao_letalidade(rodovia, "CHOQUE", "COLISAO")
-    atrop_choque_urbano = razao_letalidade(urbano, "ATROPELAMENTO", "CHOQUE")
-    total_obitos = df["obitos"].sum()
-    obitos_via = df.groupby("tipo_via")["obitos"].sum()
-    registros_via = df["tipo_via"].value_counts(normalize=True) * 100
-    letal_via = comparavel.groupby("tipo_via")["obitos"].apply(lambda s: (s > 0).mean() * 100)
-    obitos_rodovias = df[normalizar_via(df["logradouro"]).isin(RODOVIAS_PRINCIPAIS)]["obitos"].sum()
-    modal = com_modal_informado(df)
+def gerar_relatorio(df, indicadores):
+    i = indicadores
+    resultado, comparavel, datas = i["modelo"], i["comparavel"], i["datas"]
+    teste, por_dia, letalidade, modal = i["teste"], i["por_dia"], i["letalidade"], i["modal"]
     moto = comparavel.groupby("envolve_moto").agg(
         letal=("obitos", lambda s: (s > 0).mean() * 100),
         grave=("severidade_grave_ou_fatal", lambda s: s.mean() * 100),
     )
     horas = df["hora_num"].value_counts().head(3).index.astype(int)
-    pct_notif = df[df["ano"] >= 2019].groupby("ano")["tipo_registro"].apply(lambda s: (s == "NOTIFICACAO").mean() * 100)
     madrugada = comparavel.groupby("is_fim_de_semana")["turno_ajustado"].apply(lambda s: (s == "MADRUGADA").mean() * 100)
-    completos = df[(df["ano"] >= 2019) & (df["ano"] < datas.max().year)]["ano"].value_counts()
-    severidade = df["severidade_categoria"].value_counts()
+    ultimo_completo = datas.max().year - 1 if i["ano_parcial"] else datas.max().year
+    completos = df[(df["ano"] >= 2019) & (df["ano"] <= ultimo_completo)]["ano"].value_counts()
     obitos_ano = df.groupby("ano")["obitos"].sum()
     fatais_ate_2018 = df[df["ano"] <= 2018].groupby("ano")["id_sinistro"].count()
-    conclusao_dias = (
-        "O intervalo exclui zero, o que indica diferença entre os dois blocos."
-        if teste["p_welch"] < 0.05
-        else "O intervalo inclui zero: os dados não demonstram diferença entre os dois blocos, o que não prova que as médias sejam iguais."
-    )
     aviso_modelo = (
-        "O modelo não supera a referência de sempre prever a classe mais comum."
-        if resultado["acuracia"] <= resultado["referencia"] + 0.005
-        else "O modelo supera a referência de sempre prever a classe mais comum."
-    )
-    ordem_atrop = (
-        f"O atropelamento fica acima do choque na base toda (razão {br(atrop_choque[0], 2)}; IC95% {br(atrop_choque[1], 2)} a {br(atrop_choque[2], 2)}), "
-        f"mas nas vias urbanas os dois não podem ser ordenados com segurança (razão {br(atrop_choque_urbano[0], 2)}; IC95% {br(atrop_choque_urbano[1], 2)} a {br(atrop_choque_urbano[2], 2)})."
+        "O modelo supera a referência de sempre prever a classe mais comum."
+        if i["supera_referencia"]
+        else "O modelo não supera a referência de sempre prever a classe mais comum."
     )
     importancias = ", ".join(NOMES_FEATURES.get(nome, nome).lower() for nome in resultado["importancias"].head(4).index)
     vias = ranking_vias(df[df["tipo_registro"] != "NOTIFICACAO"])
     vias_obitos = ranking_vias(df[df["tipo_registro"] != "NOTIFICACAO"], por="obitos")
+    frase_letalidade_via = (
+        f"A letalidade por sinistro é maior nas rodovias ({br(i['letal_rodovia'], 1)}%) do que nas vias urbanas ({br(i['letal_urbana'], 1)}%)."
+        if i["rodovia_mais_letal"]
+        else f"A letalidade por sinistro é de {br(i['letal_rodovia'], 1)}% nas rodovias e {br(i['letal_urbana'], 1)}% nas vias urbanas."
+    )
+    taxa_atropelamento = br(i["letalidade_tipo"]["ATROPELAMENTO"], 2)
 
     texto = f"""# Relatório técnico: segurança viária em Bauru/SP
 
 **Município:** Bauru/SP (`IBGE 3506003`)
 **Fonte:** Infosiga SP
-**Período dos dados:** {datas.min():%d/%m/%Y} a {datas.max():%d/%m/%Y}
+**Período dos dados:** {i['data_inicio']} a {i['data_fim']}
 
 Este arquivo é gerado por `scripts/gerar_artefatos.py`. As correções do estudo de 30/09/2026 estão em [`ERRATA.md`](ERRATA.md).
 
 ## 1. Principais indicadores
 
-* **Registros:** {br(len(df))}, dos quais {br((df['tipo_registro'] == 'NOTIFICACAO').sum())} são notificações ({br((df['tipo_registro'] == 'NOTIFICACAO').mean() * 100, 1)}%).
-* **Vítimas:** {br(total_obitos)} óbitos, {br(df['feridos_graves'].sum())} feridos graves e {br(df['feridos_leves'].sum())} feridos leves.
-* **Sem informação de vítimas:** {br(severidade[SEM_INFORMACAO])} registros ({br(severidade[SEM_INFORMACAO] / len(df) * 100, 1)}%). Isso não significa que ninguém se feriu. Só {br(severidade[SEM_FERIDOS])} ({br(severidade[SEM_FERIDOS] / len(df) * 100, 1)}%) registram apenas ilesos.
+* **Registros:** {br(i['total'])}, dos quais {br(i['notificacoes'])} são notificações ({br(i['notificacoes_pct'], 1)}%).
+* **Vítimas:** {br(i['obitos'])} óbitos, {br(i['feridos_graves'])} feridos graves e {br(i['feridos_leves'])} feridos leves.
+* **Sem informação de vítimas:** {br(i['sem_informacao'])} registros ({br(i['sem_informacao_pct'], 1)}%). Isso não significa que ninguém se feriu. Só {br(i['sem_feridos'])} ({br(i['sem_feridos_pct'], 1)}%) registram apenas ilesos.
 * **Coordenadas:** {br(df['geo_valida'].sum())} registros ({br(df['geo_valida'].mean() * 100, 1)}%) ficam em um retângulo aproximado ao redor do município. Esse filtro não equivale ao limite municipal.
 
 ## 2. Método e comparabilidade
 
 1. **2015 a 2018:** só há sinistros fatais ({fatais_ate_2018.min()} a {fatais_ate_2018.max()} por ano).
 2. **2019 em diante:** entram sinistros não fatais e notificações. Nos anos completos, o total varia de {br(completos.min())} a {br(completos.max())} registros.
-3. **Notificações:** representam de {br(pct_notif.min(), 1)}% a {br(pct_notif.max(), 1)}% dos registros por ano e nunca trazem veículos. Por isso, o total anual não mede tendência.
+3. **Notificações:** representam de {br(i['notif_pct_min'], 1)}% a {br(i['notif_pct_max'], 1)}% dos registros por ano e {'nunca' if i['notificacoes_sem_veiculo'] else 'raramente'} trazem veículos. Por isso, o total anual não mede tendência.
 
 Letalidade, perfis de gravidade e modelo usam a **base comparável**: {br(len(comparavel))} sinistros de 2019 em diante, sem notificações. Letalidade é a proporção de sinistros com ao menos um óbito, não o número de mortos dividido por sinistros.
 
@@ -275,7 +259,7 @@ Teste de Welch com todos os dias do calendário desde 2019, inclusive os {br(tes
 * **Fins de semana:** {br(teste['media_fds'], 2)} registros/dia
 * **Diferença:** {br(teste['diferenca'], 2)} (IC95% {br(teste['ic95'][0], 2)} a {br(teste['ic95'][1], 2)}; p = {br(teste['p_welch'], 3)})
 
-{conclusao_dias} Agrupar os dias em dois blocos esconde diferenças: sexta tem {br(por_dia[4], 2)}, sábado {br(por_dia[5], 2)} e domingo {br(por_dia[6], 2)}, contra {br(por_dia[[0, 1, 2, 3]].mean(), 2)} de segunda a quinta.
+{i['conclusao_dias']} Agrupar os dias em dois blocos esconde diferenças: sexta tem {br(por_dia[4], 2)}, sábado {br(por_dia[5], 2)} e domingo {br(por_dia[6], 2)}, contra {br(por_dia[[0, 1, 2, 3]].mean(), 2)} de segunda a quinta.
 
 A madrugada responde por {br(madrugada[1], 1)}% dos sinistros de fim de semana e {br(madrugada[0], 1)}% dos de dias úteis. A base não mede alcoolemia nem velocidade, então a causa desse padrão não pode ser afirmada.
 
@@ -286,9 +270,9 @@ A madrugada responde por {br(madrugada[1], 1)}% dos sinistros de fim de semana e
     ["Tipo", "Sinistros", "Sinistros com óbito", "Óbitos (pessoas)", "Feridos graves (pessoas)", "Letalidade"],
 )}
 
-{ordem_atrop}
+{i['frase_atropelamento']}
 
-O choque tem {br(choque_colisao[0], 1)} vezes a letalidade da colisão (IC95% {br(choque_colisao[1], 1)} a {br(choque_colisao[2], 1)}), mas essa diferença é urbana: {br(choque_urbano[0], 1)} vezes nas vias urbanas (IC95% {br(choque_urbano[1], 1)} a {br(choque_urbano[2], 1)}) e {br(choque_rodovia[0], 1)} nas rodovias (IC95% {br(choque_rodovia[1], 1)} a {br(choque_rodovia[2], 1)}). A base não informa qual objeto foi atingido.
+{i['frase_choque']} A base não informa qual objeto foi atingido.
 
 ## 5. Modais
 
@@ -298,9 +282,9 @@ Na base comparável, sinistros com moto têm {br(moto.loc[1, 'grave'], 1)}% de d
 
 ## 6. Onde ocorrem
 
-As vias urbanas têm {br(registros_via['VIAS URBANAS'], 1)}% dos registros e {br(obitos_via['VIAS URBANAS'])} dos {br(total_obitos)} óbitos ({br(obitos_via['VIAS URBANAS'] / total_obitos * 100, 0)}%). Estradas e rodovias têm {br(registros_via['ESTRADAS E RODOVIAS'], 1)}% dos registros e {br(obitos_via['ESTRADAS E RODOVIAS'])} óbitos ({br(obitos_via['ESTRADAS E RODOVIAS'] / total_obitos * 100, 0)}%). Os demais óbitos não têm tipo de via informado.
+As vias urbanas têm {br(i['registros_via']['VIAS URBANAS'], 1)}% dos registros e {br(i['obitos_via']['VIAS URBANAS'])} dos {br(i['obitos'])} óbitos ({br(i['obitos_urbanas_pct'], 0)}%). Estradas e rodovias têm {br(i['registros_via']['ESTRADAS E RODOVIAS'], 1)}% dos registros e {br(i['obitos_via']['ESTRADAS E RODOVIAS'])} óbitos ({br(i['obitos_rodovias_pct'], 0)}%). Os demais óbitos não têm tipo de via informado.
 
-A letalidade por sinistro é maior nas rodovias ({br(letal_via['ESTRADAS E RODOVIAS'], 1)}%) do que nas vias urbanas ({br(letal_via['VIAS URBANAS'], 1)}%). SP-300, SP-225 e SP-294 somam {br(obitos_rodovias)} óbitos ({br(obitos_rodovias / total_obitos * 100, 0)}%). A velocidade não consta na base.
+{frase_letalidade_via} SP-300, SP-225 e SP-294 somam {br(i['obitos_principais'])} óbitos ({br(i['obitos_principais_pct'], 0)}%). A velocidade não consta na base.
 
 {tabela_markdown(
     [[l.logradouro, br(l.sinistros), br(l.obitos), br(l.feridos_graves)] for l in vias.itertuples()],
@@ -329,8 +313,8 @@ O modelo usa dados conhecidos só depois do sinistro, então não prevê acident
 
 As ações abaixo devem ser validadas com contagem de tráfego, inspeção em campo e dados de velocidade e alcoolemia, que não constam nesta base.
 
-1. **Pedestres:** priorizar a análise dos locais de atropelamento, o tipo com maior letalidade ({br(taxa['ATROPELAMENTO'], 2)}%).
-2. **Rodovias:** revisar com DER e concessionárias os trechos de SP-300, SP-225 e SP-294, que somam {br(obitos_rodovias / total_obitos * 100, 0)}% dos óbitos.
+1. **Pedestres:** priorizar a análise dos locais de atropelamento, {'o tipo com maior letalidade' if i['atropelamento_mais_letal'] else 'um tipo de alta letalidade'} ({taxa_atropelamento}%).
+2. **Rodovias:** revisar com DER e concessionárias os trechos de SP-300, SP-225 e SP-294, que somam {br(i['obitos_principais_pct'], 0)}% dos óbitos.
 3. **Vias urbanas:** inspecionar os locais de choque para identificar os objetos atingidos antes de instalar defensas, e avaliar medidas para motociclistas nas vias com mais registros.
 4. **Coleta de dados:** obter fluxo de veículos e medições de velocidade, para calcular risco e não apenas volume.
 
@@ -340,24 +324,42 @@ As ações abaixo devem ser validadas com contagem de tráfego, inspeção em ca
 * Não há fluxo de veículos, frota, velocidade nem alcoolemia.
 * A base não indica em qual veículo cada vítima estava.
 * Contagens vazias viram zero, o que pode subestimar envolvidos.
-* O último mês pode ser revisado pela fonte, e o último ano é parcial. Óbitos por ano: {", ".join(f"{ano}: {valor}" for ano, valor in obitos_ano.items())}.
+* O último mês pode ser revisado pela fonte{', e o último ano é parcial' if i['ano_parcial'] else ''}. Óbitos por ano: {", ".join(f"{ano}: {valor}" for ano, valor in obitos_ano.items())}.
 """
     with open(RELATORIO_MD, "w", encoding="utf-8") as arquivo:
         arquivo.write(texto)
+
+
+def gerar_readme(indicadores, destino=README_MD):
+    """Preenche o modelo do README com os indicadores da base."""
+    ambiente = Environment(
+        loader=FileSystemLoader(TEMPLATES_DIR),
+        undefined=StrictUndefined,
+        keep_trailing_newline=True,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    ambiente.filters["br"] = br
+    conteudo = ambiente.get_template("README.md.j2").render(i=indicadores, url=URL_ARTEFATOS)
+    with open(destino, "w", encoding="utf-8") as arquivo:
+        arquivo.write(conteudo)
+    return conteudo
 
 
 def main():
     df = pd.read_csv(DATA_FILE, sep=";", encoding="utf-8", low_memory=False)
     os.makedirs(GRAFICOS_DIR, exist_ok=True)
     resultado = treinar_modelo(df)
-    grafico_anual(df)
+    indicadores = calcular_indicadores(df, resultado)
+    grafico_anual(df, indicadores["ano_parcial"])
     grafico_dia_hora(df)
     grafico_tipos_modais(df)
     grafico_heatmap(df)
     grafico_importancias(resultado)
     gerar_mapa(df)
-    gerar_relatorio(df, resultado)
-    print("Gráficos, mapa e relatório atualizados.")
+    gerar_relatorio(df, indicadores)
+    gerar_readme(indicadores)
+    print(f"Gráficos, mapa, relatório e README atualizados com dados até {indicadores['data_fim']}.")
 
 
 if __name__ == "__main__":

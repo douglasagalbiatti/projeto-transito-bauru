@@ -1,10 +1,15 @@
 """Regras estatísticas compartilhadas por ETL, notebooks, relatório e dashboard."""
 
+import os
 import unicodedata
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
 
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+URL_ARTEFATOS = "https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos"
 ANO_INICIO_COMPARAVEL = 2019
 SEM_FERIDOS = "SEM FERIDOS (ILESOS)"
 SEM_INFORMACAO = "SEM INFORMACAO"
@@ -20,6 +25,20 @@ COLUNAS_MODAL = [
     "qtd_pedestre", "qtd_bicicleta", "qtd_motocicleta", "qtd_automovel",
     "qtd_onibus", "qtd_caminhao", "qtd_veic_outros",
 ]
+
+
+def ler_artefato(nome: str):
+    """Lê o gráfico gerado localmente ou, se não houver, o publicado na branch 'artefatos'."""
+    caminho = f"output/graficos/{nome}"
+    local = os.path.join(RAIZ, caminho)
+    if os.path.exists(local):
+        with open(local, "rb") as arquivo:
+            return arquivo.read()
+    try:
+        with urlopen(f"{URL_ARTEFATOS}/{caminho}", timeout=30) as resposta:
+            return resposta.read()
+    except (URLError, OSError):
+        return None
 
 
 def br(valor, casas: int = 0) -> str:

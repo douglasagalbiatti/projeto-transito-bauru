@@ -408,7 +408,10 @@ fig.show()"""),
 
     nbf.v4.new_markdown_cell("""## 2. Exportação do Artefato Interativo HTML"""),
 
-    nbf.v4.new_code_cell("""saida_mapa = '../output/graficos/mapa_acidentes.html'
+    nbf.v4.new_code_cell("""import os
+
+saida_mapa = '../output/graficos/mapa_acidentes.html'
+os.makedirs('../output/graficos', exist_ok=True)
 fig.write_html(saida_mapa)
 print(f"Mapa geoespacial interativo exportado com sucesso para {saida_mapa}!")""")
 ]

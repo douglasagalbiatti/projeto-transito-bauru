@@ -1,3 +1,4 @@
+<!-- Gerado por scripts/gerar_artefatos.py. Para mudar o texto, edite templates/README.md.j2. -->
 # 🚦 Análise de Sinistros de Trânsito em Bauru/SP
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
@@ -7,7 +8,9 @@
 
 Estudo de Ciência de Dados sobre os registros de trânsito de **Bauru/SP** no Infosiga SP, com ingestão de dados estaduais, análise estatística, modelo exploratório de gravidade, mapa interativo e painel em Streamlit.
 
-Os números abaixo usam os dados de 13/01/2015 a 30/09/2026. O painel calcula seus indicadores a partir da base atual, e o [relatório técnico](output/relatorios/relatorio_final_bauru.md) traz a análise completa. As correções ao estudo de 30/09/2026 estão na [errata](output/relatorios/ERRATA.md).
+Os números abaixo usam os dados de 13/01/2015 a 30/09/2026. O [relatório técnico](output/relatorios/relatorio_final_bauru.md) traz a análise completa. As correções ao estudo de 30/09/2026 estão na [errata](output/relatorios/ERRATA.md).
+
+> **Atualização automática:** este README, o relatório, os gráficos e o mapa são gerados de novo quando chegam dados mensais. Gráficos e mapa ficam na branch [`artefatos`](https://github.com/douglasagalbiatti/projeto-transito-bauru/tree/artefatos), que guarda apenas a versão mais recente. O `relatorio_bauru.pdf` é um registro histórico e mantém o texto de 30/09/2026.
 
 ---
 
@@ -33,17 +36,17 @@ A base não traz fluxo de veículos, frota, velocidade, alcoolemia nem o objeto 
 
 ## 📊 Visualizações
 
-![Registros e óbitos por ano](output/graficos/acidentes_por_ano.png)
+![Registros e óbitos por ano](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/acidentes_por_ano.png)
 
-![Registros por dia e hora](output/graficos/acidentes_dia_e_hora.png)
+![Registros por dia e hora](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/acidentes_dia_e_hora.png)
 
-![Letalidade por tipo e presença de modais](output/graficos/tipos_e_veiculos.png)
+![Letalidade por tipo e presença de modais](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/tipos_e_veiculos.png)
 
-![Registros por dia da semana e hora](output/graficos/heatmap_dia_hora.png)
+![Registros por dia da semana e hora](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/heatmap_dia_hora.png)
 
-![Importância de permutação no modelo](output/graficos/importancia_features_ml.png)
+![Importância de permutação no modelo](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/importancia_features_ml.png)
 
-O mapa interativo está em `output/graficos/mapa_acidentes.html`.
+O [mapa interativo](https://github.com/douglasagalbiatti/projeto-transito-bauru/blob/artefatos/output/graficos/mapa_acidentes.html) pode ser baixado em HTML ou aberto no painel.
 
 ---
 
@@ -57,7 +60,7 @@ projeto_transito_bauru/
 │   └── sinistros_*.csv                  # Arquivos brutos do Infosiga, fora do Git
 ├── notebooks/                           # Exploração, limpeza, análise e mapa
 ├── output/
-│   ├── graficos/                        # Figuras PNG e mapa HTML
+│   ├── graficos/                        # Figuras PNG e mapa HTML (na branch artefatos)
 │   └── relatorios/
 │       ├── relatorio_final_bauru.md     # Relatório técnico atual
 │       ├── resumo_anual_bauru.csv       # Tabela anual
@@ -65,12 +68,15 @@ projeto_transito_bauru/
 │       └── ERRATA.md                    # Correções ao estudo de 30/09/2026
 ├── scripts/
 │   ├── atualizar_dados_infosiga.py      # Atualização incremental pela API do Infosiga
-│   ├── gerar_artefatos.py               # Gráficos, mapa e relatório a partir da base
+│   ├── gerar_artefatos.py               # Gráficos, mapa, relatório e README a partir da base
+│   ├── publicar_artefatos.sh            # Substitui a branch artefatos
 │   ├── process_bauru_pipeline.py        # Reconstrução a partir dos arquivos brutos
 │   └── create_notebooks.py              # Gerador dos notebooks
 ├── src/
+│   ├── indicadores.py                   # Números e conclusões dos documentos
 │   ├── metricas.py                      # Regras estatísticas compartilhadas
 │   └── modelo.py                        # Modelo exploratório
+├── templates/                           # Modelo do README
 └── tests/
 ```
 
@@ -96,7 +102,7 @@ Atualizar a base com os meses novos, reprocessando os três mais recentes para i
 python scripts/atualizar_dados_infosiga.py --automatico
 ```
 
-Regenerar gráficos, mapa e relatório. A atualização mensal automática grava só a base e o resumo anual, então rode este comando para atualizar também esses arquivos e confira os números deste README:
+Regenerar gráficos, mapa, relatório e README. A atualização mensal automática já faz isso; altere os textos do README em `templates/README.md.j2` e os do relatório em `scripts/gerar_artefatos.py`, pois os arquivos gerados são sobrescritos:
 
 ```bash
 python scripts/gerar_artefatos.py
@@ -111,7 +117,7 @@ streamlit run app.py
 Rodar os testes:
 
 ```bash
-python -m unittest discover -s tests
+python -m unittest discover -s tests -t .
 ```
 
 Para reconstruir a base do zero, coloque os arquivos brutos em `data/sinistros_*.csv` e execute `python scripts/process_bauru_pipeline.py`.

@@ -5,3 +5,5 @@ __pycache__/
 *.py[cod]
 .crivo/
 .venv/
+# Arquivos gerados pesados: publicados na branch 'artefatos', substituída a cada atualização
+output/graficos/

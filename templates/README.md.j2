@@ -1,0 +1,123 @@
+<!-- Gerado por scripts/gerar_artefatos.py. Para mudar o texto, edite templates/README.md.j2. -->
+# 🚦 Análise de Sinistros de Trânsito em Bauru/SP
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Pandas](https://img.shields.io/badge/pandas-2.0%2B-150458.svg)](https://pandas.pydata.org/)
+[![Scikit-Learn](https://img.shields.io/badge/scikit--learn-1.4%2B-orange.svg)](https://scikit-learn.org/)
+[![Plotly](https://img.shields.io/badge/plotly-5.24%2B-3F4F75.svg)](https://plotly.com/)
+
+Estudo de Ciência de Dados sobre os registros de trânsito de **Bauru/SP** no Infosiga SP, com ingestão de dados estaduais, análise estatística, modelo exploratório de gravidade, mapa interativo e painel em Streamlit.
+
+Os números abaixo usam os dados de {{ i.data_inicio }} a {{ i.data_fim }}. O [relatório técnico](output/relatorios/relatorio_final_bauru.md) traz a análise completa. As correções ao estudo de 30/09/2026 estão na [errata](output/relatorios/ERRATA.md).
+
+> **Atualização automática:** este README, o relatório, os gráficos e o mapa são gerados de novo quando chegam dados mensais. Gráficos e mapa ficam na branch [`artefatos`](https://github.com/douglasagalbiatti/projeto-transito-bauru/tree/artefatos), que guarda apenas a versão mais recente. O `relatorio_bauru.pdf` é um registro histórico e mantém o texto de 30/09/2026.
+
+---
+
+## 📌 Principais resultados
+
+- **Base:** {{ i.total|br }} registros (`cod_ibge == 3506003`), dos quais {{ i.notificacoes|br }} são notificações ({{ i.notificacoes_pct|br(1) }}%). Há {{ i.obitos|br }} óbitos, {{ i.feridos_graves|br }} feridos graves e {{ i.feridos_leves|br }} feridos leves.
+- **Dados de vítimas:** {{ i.sem_informacao_pct|br(1) }}% dos registros não informam vítimas, o que não significa que ninguém se feriu.
+- **Letalidade:** atropelamentos têm {{ i.letalidade_tipo.ATROPELAMENTO|br(2) }}% de sinistros com óbito, choques {{ i.letalidade_tipo.CHOQUE|br(2) }}% e colisões {{ i.letalidade_tipo.COLISAO|br(2) }}%. {{ i.frase_choque_resumo }}
+- **Vias:** as vias urbanas têm {{ i.obitos_urbanas_pct|br }}% dos óbitos, e estradas e rodovias, {{ i.obitos_rodovias_pct|br }}%. {% if i.rodovia_mais_letal %}A letalidade por sinistro é maior nas rodovias ({{ i.letal_rodovia|br(1) }}%, contra {{ i.letal_urbana|br(1) }}%).{% else %}A letalidade por sinistro é de {{ i.letal_rodovia|br(1) }}% nas rodovias e {{ i.letal_urbana|br(1) }}% nas vias urbanas.{% endif %} SP-300, SP-225 e SP-294 somam {{ i.obitos_principais_pct|br }}% dos óbitos.
+- **Dias:** a média é de {{ i.teste.media_uteis|br(2) }} registros/dia em dias úteis e {{ i.teste.media_fds|br(2) }} em fins de semana (p = {{ i.teste.p_welch|br(3) }}). {% if i.teste.significativo %}A diferença entre os dois blocos é estatisticamente significativa{% else %}Isso não prova igualdade{% endif %}, e {{ i.dias_destaque[0].nome }} ({{ i.dias_destaque[0].media|br(2) }}) e {{ i.dias_destaque[1].nome }} ({{ i.dias_destaque[1].media|br(2) }}) ficam acima dos demais dias.
+- **Modais:** entre registros com modal informado, há automóvel em {{ i.modal_auto_pct|br(1) }}% e motocicleta em {{ i.modal_moto_pct|br(1) }}%. A base não liga cada vítima ao seu veículo nem traz frota, então não mede o risco de cada modal.
+- **Modelo:** {% if i.supera_referencia %}a acurácia de {{ i.acuracia_pct|br(1) }}% supera a de sempre prever a classe mais comum ({{ i.referencia_pct|br(1) }}%){% else %}a acurácia de {{ i.acuracia_pct|br(1) }}% é praticamente a de sempre prever a classe mais comum ({{ i.referencia_pct|br(1) }}%){% endif %}, com ROC-AUC de {{ i.modelo.auc|br(3) }}. O modelo é exploratório e não prevê acidentes.
+
+### Comparabilidade
+
+De 2015 a 2018, só há sinistros fatais. A partir de 2019, entram sinistros não fatais e notificações, que vão de {{ i.notif_pct_min|br(1) }}% a {{ i.notif_pct_max|br(1) }}% dos registros por ano. Por isso, o total anual não mede tendência. Letalidade, perfis de gravidade e modelo usam a **base comparável**: sinistros de 2019 em diante, sem notificações.
+
+### Limitações
+
+A base não traz fluxo de veículos, frota, velocidade, alcoolemia nem o objeto atingido em choques. Volumes não medem risco, e as recomendações são hipóteses a validar em campo.
+
+---
+
+## 📊 Visualizações
+
+![Registros e óbitos por ano]({{ url }}/output/graficos/acidentes_por_ano.png)
+
+![Registros por dia e hora]({{ url }}/output/graficos/acidentes_dia_e_hora.png)
+
+![Letalidade por tipo e presença de modais]({{ url }}/output/graficos/tipos_e_veiculos.png)
+
+![Registros por dia da semana e hora]({{ url }}/output/graficos/heatmap_dia_hora.png)
+
+![Importância de permutação no modelo]({{ url }}/output/graficos/importancia_features_ml.png)
+
+O [mapa interativo](https://github.com/douglasagalbiatti/projeto-transito-bauru/blob/artefatos/output/graficos/mapa_acidentes.html) pode ser baixado em HTML ou aberto no painel.
+
+---
+
+## 📂 Estrutura do Projeto
+
+```text
+projeto_transito_bauru/
+├── app.py                               # Painel em Streamlit
+├── data/
+│   ├── bauru_limpo.csv                  # Base tratada, versionada
+│   └── sinistros_*.csv                  # Arquivos brutos do Infosiga, fora do Git
+├── notebooks/                           # Exploração, limpeza, análise e mapa
+├── output/
+│   ├── graficos/                        # Figuras PNG e mapa HTML (na branch artefatos)
+│   └── relatorios/
+│       ├── relatorio_final_bauru.md     # Relatório técnico atual
+│       ├── resumo_anual_bauru.csv       # Tabela anual
+│       ├── relatorio_bauru.pdf          # Estudo de 30/09/2026 (histórico)
+│       └── ERRATA.md                    # Correções ao estudo de 30/09/2026
+├── scripts/
+│   ├── atualizar_dados_infosiga.py      # Atualização incremental pela API do Infosiga
+│   ├── gerar_artefatos.py               # Gráficos, mapa, relatório e README a partir da base
+│   ├── publicar_artefatos.sh            # Substitui a branch artefatos
+│   ├── process_bauru_pipeline.py        # Reconstrução a partir dos arquivos brutos
+│   └── create_notebooks.py              # Gerador dos notebooks
+├── src/
+│   ├── indicadores.py                   # Números e conclusões dos documentos
+│   ├── metricas.py                      # Regras estatísticas compartilhadas
+│   └── modelo.py                        # Modelo exploratório
+├── templates/                           # Modelo do README
+└── tests/
+```
+
+---
+
+## 🛠️ Como Reproduzir
+
+```bash
+python3 -m venv .venv
+```
+
+```bash
+source .venv/bin/activate
+```
+
+```bash
+pip install -r requirements.txt
+```
+
+Atualizar a base com os meses novos, reprocessando os três mais recentes para incorporar revisões da fonte:
+
+```bash
+python scripts/atualizar_dados_infosiga.py --automatico
+```
+
+Regenerar gráficos, mapa, relatório e README. A atualização mensal automática já faz isso; altere os textos do README em `templates/README.md.j2` e os do relatório em `scripts/gerar_artefatos.py`, pois os arquivos gerados são sobrescritos:
+
+```bash
+python scripts/gerar_artefatos.py
+```
+
+Abrir o painel:
+
+```bash
+streamlit run app.py
+```
+
+Rodar os testes:
+
+```bash
+python -m unittest discover -s tests -t .
+```
+
+Para reconstruir a base do zero, coloque os arquivos brutos em `data/sinistros_*.csv` e execute `python scripts/process_bauru_pipeline.py`.

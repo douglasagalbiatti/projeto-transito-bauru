@@ -12,6 +12,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from src.metricas import (
+    ler_artefato,
     CORES_SEVERIDADE,
     ORDEM_SEVERIDADE,
     SEM_INFORMACAO,
@@ -168,11 +169,8 @@ RESUMO_FILE = os.path.join(BASE_DIR, "output", "relatorios", "resumo_anual_bauru
 RELATORIO_MD = os.path.join(BASE_DIR, "output", "relatorios", "relatorio_final_bauru.md")
 RELATORIO_PDF = os.path.join(BASE_DIR, "output", "relatorios", "relatorio_bauru.pdf")
 ERRATA_MD = os.path.join(BASE_DIR, "output", "relatorios", "ERRATA.md")
-MAPA_HTML_FILE = os.path.join(BASE_DIR, "output", "graficos", "mapa_acidentes.html")
 
-GRAFICOS_DIR = os.path.join(BASE_DIR, "output", "graficos")
-
-@st.cache_data(show_spinner="Carregando base de dados tratada de Bauru...")
+@st.cache_data(ttl="1h", show_spinner="Carregando base de dados tratada de Bauru...")
 def load_data():
     if not os.path.exists(DATA_FILE):
         st.error(f"Arquivo não encontrado: {DATA_FILE}")
@@ -182,13 +180,17 @@ def load_data():
     df['ano'] = pd.to_numeric(df['ano'], errors='coerce').fillna(0).astype(int)
     return df
 
-@st.cache_data(show_spinner="Carregando resumo anual...")
+@st.cache_data(ttl="1h", show_spinner="Carregando resumo anual...")
 def load_resumo():
     if os.path.exists(RESUMO_FILE):
         return pd.read_csv(RESUMO_FILE, sep=';', encoding='utf-8')
     return pd.DataFrame()
 
-@st.cache_resource(show_spinner="Treinando o modelo exploratório...")
+@st.cache_data(ttl="1h", show_spinner="Carregando arquivo gerado...")
+def carregar_artefato(nome):
+    return ler_artefato(nome)
+
+@st.cache_resource(ttl="1h", show_spinner="Treinando o modelo exploratório...")
 def get_ml_model():
     return treinar_modelo(load_data())
 
@@ -485,8 +487,8 @@ with tab1:
             st.dataframe(formatar_tabela(df_display_resumo, sem_milhar=['Ano']), height=380, width="stretch", hide_index=True)
 
     with st.expander("🖼️ Visualizar Imagem Gerada pelo Pipeline (`output/graficos/acidentes_por_ano.png`)"):
-        img_ano = os.path.join(GRAFICOS_DIR, "acidentes_por_ano.png")
-        if os.path.exists(img_ano):
+        img_ano = carregar_artefato("acidentes_por_ano.png")
+        if img_ano:
             st.image(img_ano, caption="Registros, notificações e óbitos por ano", width="stretch")
         else:
             st.info("Arquivo de imagem estática não encontrado no caminho especificado.")
@@ -571,8 +573,8 @@ with tab2:
         )
 
     with st.expander("🖼️ Visualizar Imagem (`output/graficos/tipos_e_veiculos.png`)"):
-        img_tipo = os.path.join(GRAFICOS_DIR, "tipos_e_veiculos.png")
-        if os.path.exists(img_tipo):
+        img_tipo = carregar_artefato("tipos_e_veiculos.png")
+        if img_tipo:
             st.image(img_tipo, caption="Letalidade por tipo e presença de modais", width="stretch")
 
 # ------------------------------------------------------------------------------
@@ -848,12 +850,11 @@ with tab5:
 
     else:
         # Modo HTML completo
-        if os.path.exists(MAPA_HTML_FILE):
-            with open(MAPA_HTML_FILE, 'r', encoding='utf-8') as f:
-                html_data = f.read()
-            st.iframe(html_data, height=750)
+        mapa_html = carregar_artefato("mapa_acidentes.html")
+        if mapa_html:
+            st.iframe(mapa_html.decode("utf-8"), height=750)
         else:
-            st.error(f"Arquivo de mapa não encontrado em `{MAPA_HTML_FILE}`.")
+            st.error("O mapa não está disponível no momento. Tente novamente mais tarde.")
 
     st.markdown("#### Vias com Mais Registros (filtros aplicados, sem notificações)")
     df_sem_notificacao = df_filtrado[df_filtrado['tipo_registro'] != 'NOTIFICACAO']
@@ -1014,8 +1015,8 @@ with tab6:
         st.progress(min(prob_grave / 100.0, 1.0))
 
     with st.expander("🖼️ Visualizar Gráfico do Modelo (`output/graficos/importancia_features_ml.png`)"):
-        img_ml = os.path.join(GRAFICOS_DIR, "importancia_features_ml.png")
-        if os.path.exists(img_ml):
+        img_ml = carregar_artefato("importancia_features_ml.png")
+        if img_ml:
             st.image(img_ml, caption="Importância de permutação no Random Forest", width="stretch")
 
 # ------------------------------------------------------------------------------
@@ -1132,15 +1133,15 @@ with tab8:
         )
 
     with c_dw4:
-        if os.path.exists(MAPA_HTML_FILE):
-            with open(MAPA_HTML_FILE, "rb") as f_map:
-                st.download_button(
-                    label="🗺️ Mapa HTML Completo",
-                    data=f_map,
-                    file_name="mapa_acidentes_bauru.html",
-                    mime="text/html",
-                    width="stretch"
-                )
+        mapa_html = carregar_artefato("mapa_acidentes.html")
+        if mapa_html:
+            st.download_button(
+                label="🗺️ Mapa HTML Completo",
+                data=mapa_html,
+                file_name="mapa_acidentes_bauru.html",
+                mime="text/html",
+                width="stretch"
+            )
 
     st.markdown("---")
     st.markdown("#### 🖼️ Galeria de Gráficos em Alta Resolução (PNG)")
@@ -1157,12 +1158,10 @@ with tab8:
 
     for idx, (nome_arquivo, titulo_g) in enumerate(graficos_lista):
         col_dest = [col_g1, col_g2, col_g3][idx % 3]
-        caminho_g = os.path.join(GRAFICOS_DIR, nome_arquivo)
+        img_bytes = carregar_artefato(nome_arquivo)
         with col_dest:
             st.markdown(f"**{titulo_g}** (`{nome_arquivo}`)")
-            if os.path.exists(caminho_g):
-                with open(caminho_g, "rb") as f_img:
-                    img_bytes = f_img.read()
+            if img_bytes:
                 st.image(img_bytes, width="stretch")
                 st.download_button(
                     label=f"⬇️ Baixar {nome_arquivo}",
