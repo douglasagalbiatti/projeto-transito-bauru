@@ -22,7 +22,7 @@ def create_notebook(cells, filename):
 # ==============================================================================
 nb1_cells = [
     nbf.v4.new_markdown_cell("""# 🔍 Notebook 01: Leitura Diagnóstica, Ingestão em Chunks e Auditoria de Qualidade
-### Projeto: Análise e Diagnóstico de Acidentes de Trânsito em Bauru/SP (2015–2026)
+### Projeto: Análise de Sinistros de Trânsito em Bauru/SP
 
 Este notebook realiza a etapa inicial do pipeline de dados:
 1. Inspeção diagnóstica dos arquivos estaduais volumosos do **Infosiga SP**;
@@ -42,22 +42,16 @@ print("Arquivos de sinistros encontrados:", data_files)"""),
     nbf.v4.new_markdown_cell("""## 1. Ingestão em Lotes (Chunks)
 Como os arquivos brutos estaduais somam centenas de megabytes, utilizamos o processamento em chunks de 50.000 linhas para filtrar apenas as ocorrências de Bauru."""),
 
-    nbf.v4.new_code_cell("""dfs = []
-for file_path in data_files:
-    print(f"Processando {file_path}...")
-    for chunk in pd.read_csv(file_path, sep=';', encoding='latin1', low_memory=False, chunksize=50000):
-        # Filtro pelo código IBGE ou nome do município
-        filtro = (chunk['cod_ibge'].astype(str) == '3506003') | (chunk['municipio'].astype(str).str.upper() == 'BAURU')
-        chunk_bauru = chunk[filtro]
-        if len(chunk_bauru) > 0:
-            dfs.append(chunk_bauru)
+    nbf.v4.new_code_cell("""import sys
+sys.path.append('..')
+from scripts.atualizar_dados_infosiga import filtrar_bauru_de_arquivo_csv
 
-df_raw = pd.concat(dfs, ignore_index=True)
+df_raw = pd.concat([filtrar_bauru_de_arquivo_csv(p) for p in data_files], ignore_index=True)
 print(f"Total de registros de Bauru extraídos: {len(df_raw)}")
 df_raw.head()"""),
 
     nbf.v4.new_markdown_cell("""## 2. Auditoria de Tipos de Registro e Quebra Metodológica
-No Infosiga SP, os registros entre 2015 e 2018 contemplavam prioritariamente sinistros com **vítimas fatais**. A partir de 2019, o sistema passou a registrar também sinistros **não fatais** e notificações sem lesões."""),
+No Infosiga SP, os registros entre 2015 e 2018 são de sinistros **fatais**. A partir de 2019, entram também sinistros **não fatais** e **notificações**, que nunca trazem veículos, quase sempre vêm sem dados de vítimas e têm proporção muito variável por ano."""),
 
     nbf.v4.new_code_cell("""print("Distribuição por Tipo de Registro:")
 print(df_raw['tipo_registro'].value_counts(dropna=False))
@@ -74,8 +68,8 @@ tabela_nulos = pd.DataFrame({'Total Nulos': nulos, 'Percentual (%)': pct_nulos})
 tabela_nulos.sort_values(by='Total Nulos', ascending=False).head(15)"""),
 
     nbf.v4.new_markdown_cell("""## 4. Conclusão Diagnóstica
-- O conjunto de Bauru totaliza **18.938 sinistros** brutos.
-- A série histórica possui estabilidade nos óbitos contínuos desde 2015 e grande riqueza de variáveis a partir de 2019.
+- O total anual de registros não mede tendência, pois a cobertura das notificações varia por ano.
+- Análises de letalidade e gravidade devem usar a base comparável: sinistros de 2019 em diante, sem notificações.
 - O próximo passo é o tratamento dos tipos de dados, limpeza das coordenadas e feature engineering no `02-limpeza.ipynb`.""")
 ]
 
@@ -84,7 +78,7 @@ tabela_nulos.sort_values(by='Total Nulos', ascending=False).head(15)"""),
 # ==============================================================================
 nb2_cells = [
     nbf.v4.new_markdown_cell("""# 🧹 Notebook 02: Limpeza, Tipagem e Feature Engineering
-### Projeto: Análise e Diagnóstico de Acidentes de Trânsito em Bauru/SP (2015–2026)
+### Projeto: Análise de Sinistros de Trânsito em Bauru/SP
 
 Neste notebook realizamos a higienização completa da base de Bauru:
 1. Padronização de datas (`datetime`), extração de componentes temporais;
@@ -95,20 +89,17 @@ Neste notebook realizamos a higienização completa da base de Bauru:
 
     nbf.v4.new_code_cell("""import os
 import glob
+import sys
 import pandas as pd
 import numpy as np
 
+sys.path.append('..')
+from scripts.atualizar_dados_infosiga import filtrar_bauru_de_arquivo_csv
+from src.metricas import classificar_severidade
+
 # Ingestão das ocorrências brutas filtradas de Bauru
 data_files = sorted(glob.glob('../data/sinistros_*.csv'))
-dfs = []
-for p in data_files:
-    for chunk in pd.read_csv(p, sep=';', encoding='latin1', low_memory=False, chunksize=50000):
-        cond = (chunk['cod_ibge'].astype(str) == '3506003') | (chunk['municipio'].astype(str).str.upper() == 'BAURU')
-        cb = chunk[cond]
-        if len(cb) > 0:
-            dfs.append(cb)
-
-df = pd.concat(dfs, ignore_index=True)
+df = pd.concat([filtrar_bauru_de_arquivo_csv(p) for p in data_files], ignore_index=True)
 print(f"Base carregada: {len(df)} registros.")"""),
 
     nbf.v4.new_markdown_cell("""## 1. Tratamento de Datas e Horas"""),
@@ -122,13 +113,11 @@ df['mes'] = pd.to_numeric(df['mes_sinistro'], errors='coerce').fillna(df['data_s
 def parse_hora(h):
     if pd.isna(h):
         return np.nan
-    s = str(h).strip()
-    if ':' in s:
-        try:
-            return int(s.split(':')[0])
-        except:
-            return np.nan
-    return np.nan
+    try:
+        val = int(str(h).strip().split(':')[0])
+    except ValueError:
+        return np.nan
+    return val if 0 <= val <= 23 else np.nan
 
 df['hora_num'] = df['hora_sinistro'].apply(parse_hora)
 
@@ -155,7 +144,7 @@ lon_str = df['longitude'].astype(str).str.replace(',', '.').str.strip()
 df['lat'] = pd.to_numeric(lat_str, errors='coerce')
 df['lon'] = pd.to_numeric(lon_str, errors='coerce')
 
-# Bounding box territorial de Bauru (-22.6 a -22.0 lat, -49.4 a -48.8 lon)
+# Retângulo aproximado ao redor de Bauru (-22.6 a -22.0 lat, -49.4 a -48.8 lon); não é o limite municipal
 df['geo_valida'] = (df['lat'].between(-22.6, -22.0)) & (df['lon'].between(-49.4, -48.8))
 print(f"Pontos georreferenciados válidos: {df['geo_valida'].sum()} ({df['geo_valida'].sum()/len(df)*100:.1f}%)")"""),
 
@@ -163,16 +152,16 @@ print(f"Pontos georreferenciados válidos: {df['geo_valida'].sum()} ({df['geo_va
 
     nbf.v4.new_code_cell("""# Conversão segura de colunas numéricas
 cols_qtd = [
-    'qtd_gravidade_fatal', 'qtd_gravidade_grave', 'qtd_gravidade_leve', 'qtd_gravidade_ileso',
-    'qtd_pedestre', 'qtd_bicicleta', 'qtd_motocicleta', 'qtd_automovel', 'qtd_onibus', 'qtd_caminhao'
+    'qtd_gravidade_fatal', 'qtd_gravidade_grave', 'qtd_gravidade_leve', 'qtd_gravidade_ileso', 'qtd_gravidade_nao_disponivel',
+    'qtd_pedestre', 'qtd_bicicleta', 'qtd_motocicleta', 'qtd_automovel', 'qtd_onibus', 'qtd_caminhao', 'qtd_veic_outros'
 ]
 for col in cols_qtd:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
 
 df['obitos'] = df['qtd_gravidade_fatal']
 df['feridos_graves'] = df['qtd_gravidade_grave']
 df['feridos_leves'] = df['qtd_gravidade_leve']
+df['ilesos'] = df['qtd_gravidade_ileso']
 
 # Flags binárias de modais
 df['envolve_moto'] = (df['qtd_motocicleta'] > 0).astype(int)
@@ -184,17 +173,8 @@ df['envolve_pesado'] = ((df['qtd_caminhao'] > 0) | (df['qtd_onibus'] > 0)).astyp
 # Severidade binária (Grave ou Fatal)
 df['severidade_grave_ou_fatal'] = ((df['obitos'] > 0) | (df['feridos_graves'] > 0)).astype(int)
 
-# Classificação categórica de severidade
-def classificar_severidade(r):
-    if r['obitos'] > 0:
-        return 'FATAL'
-    elif r['feridos_graves'] > 0:
-        return 'GRAVE'
-    elif r['feridos_leves'] > 0:
-        return 'LEVE'
-    return 'ILESO / NAO INFORMADO'
-
-df['severidade_categoria'] = df.apply(classificar_severidade, axis=1)
+# Classificação de severidade: registro sem dados de vítima não é 'sem vítimas'
+df['severidade_categoria'] = classificar_severidade(df)
 
 # Dia da semana e final de semana
 mapa_dias = {
@@ -235,6 +215,8 @@ df['tipo_sinistro_simplificado'] = df['tp_sinistro_primario'].apply(classificar_
     nbf.v4.new_markdown_cell("""## 4. Exportação do Dataset Higienizado"""),
 
     nbf.v4.new_code_cell("""caminho_saida = '../data/bauru_limpo.csv'
+df['data_sinistro_dt'] = df['data_sinistro_dt'].dt.strftime('%Y-%m-%d')
+df = df.drop_duplicates(subset=['id_sinistro'], keep='last').sort_values(by=['data_sinistro_dt', 'id_sinistro'])
 df.to_csv(caminho_saida, index=False, sep=';', encoding='utf-8')
 print(f"Dataset consolidado e limpo salvo com sucesso em {caminho_saida} ({len(df)} registros).")""")
 ]
@@ -243,38 +225,41 @@ print(f"Dataset consolidado e limpo salvo com sucesso em {caminho_saida} ({len(d
 # NOTEBOOK 03: ANÁLISE ESTATÍSTICA E MACHINE LEARNING
 # ==============================================================================
 nb3_cells = [
-    nbf.v4.new_markdown_cell("""# 📊 Notebook 03: Análise Exploratória, Inferência Estatística e Modelagem Preditiva
-### Projeto: Análise e Diagnóstico de Acidentes de Trânsito em Bauru/SP (2015–2026)
+    nbf.v4.new_markdown_cell("""# 📊 Notebook 03: Análise Exploratória, Inferência Estatística e Modelo Exploratório
+### Projeto: Análise de Sinistros de Trânsito em Bauru/SP
 
-Neste notebook desenvolvemos as análises centrais de segurança viária para Bauru:
-1. Evolução histórica de sinistros e vítimas fatais (2015–2026);
-2. Distribuição temporal (dias da semana e horários de pico);
-3. Teste de Hipótese Estatística (*Student's t-test*) entre dias úteis e finais de semana;
-4. Letalidade comparativa por modal e tipo de choque/colisão;
-5. Matriz de calor (*Heatmap*) dia vs hora;
-6. Modelo Preditivo Supervisionado (**Random Forest**) com *class weights* e avaliação de *Feature Importance* (Gini)."""),
+Neste notebook desenvolvemos as análises centrais:
+1. Evolução anual de registros, notificações e óbitos;
+2. Comparação entre dias úteis e fins de semana (teste de Welch), com todos os dias do calendário;
+3. Letalidade por tipo de sinistro e por tipo de via, na base comparável;
+4. Matriz de calor dia vs hora;
+5. Modelo exploratório (**Random Forest**), comparado à referência de sempre prever a classe mais comum.
 
-    nbf.v4.new_code_cell("""import os
+**Base comparável:** sinistros de 2019 em diante, sem notificações. As regras estão em `src/metricas.py` e `src/modelo.py`, usadas também pelo painel e pelo relatório."""),
+
+    nbf.v4.new_code_cell("""import sys
 import pandas as pd
-import numpy as np
-import scipy.stats as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, roc_auc_score, accuracy_score, confusion_matrix
+
+sys.path.append('..')
+from src.metricas import base_comparavel, comparar_dias, razao_letalidade, tabela_letalidade
+from src.modelo import treinar_modelo
 
 plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
 plt.rcParams['font.sans-serif'] = 'DejaVu Sans'
 plt.rcParams['figure.dpi'] = 150
 
-df = pd.read_csv('../data/bauru_limpo.csv', sep=';', encoding='utf-8')
-print(f"Dataset carregado: {len(df)} ocorrências.")"""),
+df = pd.read_csv('../data/bauru_limpo.csv', sep=';', encoding='utf-8', low_memory=False)
+comparavel = base_comparavel(df)
+print(f"Registros: {len(df)} | Base comparável: {len(comparavel)}")"""),
 
-    nbf.v4.new_markdown_cell("""## 1. Evolução Histórica Anual (2015–2026)"""),
+    nbf.v4.new_markdown_cell("""## 1. Evolução Anual
+Até 2018 só há sinistros fatais. Desde 2019, a proporção de notificações varia muito, então o total anual não mede tendência. O último ano é parcial."""),
 
     nbf.v4.new_code_cell("""resumo_anual = df.groupby('ano').agg(
-    total_sinistros=('id_sinistro', 'count'),
+    sinistros=('tipo_registro', lambda s: int((s != 'NOTIFICACAO').sum())),
+    notificacoes=('tipo_registro', lambda s: int((s == 'NOTIFICACAO').sum())),
     obitos=('obitos', 'sum'),
     feridos_graves=('feridos_graves', 'sum'),
     feridos_leves=('feridos_leves', 'sum')
@@ -283,54 +268,43 @@ print(f"Dataset carregado: {len(df)} ocorrências.")"""),
 display(resumo_anual)
 
 fig, ax1 = plt.subplots(figsize=(12, 5))
-ax1.bar(resumo_anual['ano'], resumo_anual['total_sinistros'], color='#2b5c8f', alpha=0.85, width=0.6, label='Total Sinistros')
+ax1.bar(resumo_anual['ano'], resumo_anual['sinistros'], color='#2b5c8f', width=0.6, label='Sinistros')
+ax1.bar(resumo_anual['ano'], resumo_anual['notificacoes'], bottom=resumo_anual['sinistros'], color='#adb5bd', width=0.6, label='Notificações')
 ax1.set_xlabel('Ano')
-ax1.set_ylabel('Total de Sinistros', color='#2b5c8f')
+ax1.set_ylabel('Registros')
 ax1.set_xticks(resumo_anual['ano'])
+ax1.legend(loc='upper left')
 
 ax2 = ax1.twinx()
-ax2.plot(resumo_anual['ano'], resumo_anual['obitos'], color='#d9383a', linewidth=3, marker='o', label='Óbitos')
-ax2.set_ylabel('Óbitos Confirmados', color='#d9383a')
+ax2.plot(resumo_anual['ano'], resumo_anual['obitos'], color='#d9383a', linewidth=3, marker='o')
+ax2.set_ylabel('Óbitos', color='#d9383a')
 ax2.grid(False)
 
-plt.title('Evolução Anual de Sinistros e Óbitos em Bauru/SP (2015–2026)')
+plt.title('Registros e Óbitos em Bauru/SP')
 plt.tight_layout()
 plt.show()"""),
 
-    nbf.v4.new_markdown_cell("""## 2. Teste de Hipótese Estatística: Dias Úteis vs Fins de Semana
-Avaliando se a média diária de acidentes difere estatisticamente entre os dias de semana (segunda a sexta) e fins de semana (sábado e domingo)."""),
+    nbf.v4.new_markdown_cell("""## 2. Dias Úteis vs Fins de Semana
+Cada dia do calendário conta, inclusive os dias sem nenhum registro. Um p-valor alto não prova que as médias sejam iguais."""),
 
-    nbf.v4.new_code_cell("""df_completo = df[(df['ano'] >= 2019) & (df['ano'] <= 2025)].copy()
-df_completo['data_dt'] = pd.to_datetime(df_completo['data_sinistro_dt'])
-acidentes_dia = df_completo.groupby('data_dt').agg(
-    total=('id_sinistro', 'count'),
-    fim_de_semana=('is_fim_de_semana', 'first')
-).reset_index()
+    nbf.v4.new_code_cell("""teste = comparar_dias(df[df['ano'] >= 2019])
+print(f"Média em dias úteis: {teste['media_uteis']:.2f} registros/dia")
+print(f"Média em fins de semana: {teste['media_fds']:.2f} registros/dia")
+print(f"Diferença: {teste['diferenca']:.2f} (IC95% {teste['ic95'][0]:.2f} a {teste['ic95'][1]:.2f}), p = {teste['p_welch']:.3f}")
+print(f"Dias sem registro: {teste['dias_sem_registro_pct']:.1f}%")
+print("Média por dia (segunda a domingo):", teste['media_por_dia'].round(2).tolist())"""),
 
-uteis = acidentes_dia[acidentes_dia['fim_de_semana'] == 0]['total']
-finais = acidentes_dia[acidentes_dia['fim_de_semana'] == 1]['total']
+    nbf.v4.new_markdown_cell("""## 3. Letalidade na Base Comparável
+Letalidade = sinistros com óbito ÷ sinistros do tipo. A base não informa velocidade nem qual objeto foi atingido."""),
 
-t_stat, p_val = stats.ttest_ind(uteis, finais, equal_var=False)
-print(f"Média em Dias Úteis: {uteis.mean():.2f} acidentes/dia (std: {uteis.std():.2f})")
-print(f"Média em Fins de Semana: {finais.mean():.2f} acidentes/dia (std: {finais.std():.2f})")
-print(f"Estatística t = {t_stat:.3f}, p-valor = {p_val:.4f}")
-if p_val > 0.05:
-    print("Conclusão: Não há diferença estatisticamente significativa na média diária (p > 0.05).")
-else:
-    print("Conclusão: Diferença estatisticamente significativa detectada.")"""),
+    nbf.v4.new_code_cell("""display(tabela_letalidade(comparavel))
 
-    nbf.v4.new_markdown_cell("""## 3. Letalidade por Tipo de Sinistro e Modal Envolvido"""),
+for tipo_via, base in comparavel[comparavel['tipo_via'] != 'NAO DISPONIVEL'].groupby('tipo_via'):
+    razao, inferior, superior = razao_letalidade(base, 'CHOQUE', 'COLISAO')
+    print(f"{tipo_via}: choque/colisão = {razao:.2f} (IC95% {inferior:.2f} a {superior:.2f})")"""),
 
-    nbf.v4.new_code_cell("""tabela_tipo = df.groupby('tipo_sinistro_simplificado').agg(
-    total=('id_sinistro', 'count'),
-    obitos=('obitos', 'sum'),
-    feridos_graves=('feridos_graves', 'sum')
-).reset_index()
-tabela_tipo['letalidade_pct'] = (tabela_tipo['obitos'] / tabela_tipo['total']) * 100
-tabela_tipo = tabela_tipo.sort_values(by='letalidade_pct', ascending=False)
-display(tabela_tipo)"""),
-
-    nbf.v4.new_markdown_cell("""## 4. Matriz de Calor: Horário do Dia vs Dia da Semana"""),
+    nbf.v4.new_markdown_cell("""## 4. Matriz de Calor: Horário do Dia vs Dia da Semana
+Volume não equivale a risco, pois a base não traz o fluxo de veículos."""),
 
     nbf.v4.new_code_cell("""ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 heatmap_data = df[df['hora_num'].notnull()].pivot_table(
@@ -339,45 +313,28 @@ heatmap_data = df[df['hora_num'].notnull()].pivot_table(
     values='id_sinistro',
     aggfunc='count',
     fill_value=0
-).reindex(ordem_dias)
+).reindex(index=ordem_dias, columns=range(24), fill_value=0)
 
 plt.figure(figsize=(14, 5))
 sns.heatmap(heatmap_data, cmap='YlOrRd', annot=True, fmt='d', linewidths=0.5)
-plt.title('Matriz de Calor: Sinistros por Dia da Semana e Hora do Dia (Bauru/SP)')
+plt.title('Registros por Dia da Semana e Hora do Dia (Bauru/SP)')
 plt.xlabel('Hora do Dia (0h - 23h)')
 plt.ylabel('Dia da Semana')
 plt.tight_layout()
 plt.show()"""),
 
-    nbf.v4.new_markdown_cell("""## 5. Modelagem Supervisionada de Gravidade (Random Forest)"""),
+    nbf.v4.new_markdown_cell("""## 5. Modelo Exploratório (Random Forest)
+O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. A importância de permutação não indica sentido nem causa."""),
 
-    nbf.v4.new_code_cell("""df_ml = df[df['hora_num'].notnull()].copy()
-features_cols = ['envolve_moto', 'envolve_auto', 'envolve_pedestre', 'envolve_bicicleta', 'envolve_pesado', 'is_fim_de_semana']
+    nbf.v4.new_code_cell("""resultado = treinar_modelo(df)
+print(f"Acurácia: {resultado['acuracia']:.3f} | Sempre prever a classe mais comum: {resultado['referencia']:.3f}")
+print(f"Acurácia balanceada: {resultado['acuracia_balanceada']:.3f} | ROC-AUC: {resultado['auc']:.3f}")
 
-dummies_via = pd.get_dummies(df_ml['tipo_via_simplificado'], prefix='via', drop_first=True)
-dummies_tipo = pd.get_dummies(df_ml['tipo_sinistro_simplificado'], prefix='tipo', drop_first=True)
-dummies_turno = pd.get_dummies(df_ml['turno_ajustado'], prefix='turno', drop_first=True)
-
-X = pd.concat([df_ml[features_cols], df_ml[['hora_num']], dummies_via, dummies_tipo, dummies_turno], axis=1)
-y = df_ml['severidade_grave_ou_fatal']
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
-
-rf = RandomForestClassifier(n_estimators=200, max_depth=10, class_weight='balanced', random_state=42, n_jobs=-1)
-rf.fit(X_train, y_train)
-
-y_pred = rf.predict(X_test)
-y_prob = rf.predict_proba(X_test)[:, 1]
-
-print("Acurácia:", accuracy_score(y_test, y_pred))
-print("ROC-AUC:", roc_auc_score(y_test, y_prob))
-print("\\nRelatório de Classificação:\\n", classification_report(y_test, y_pred))
-
-importancias = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+top = resultado['importancias'].head(10)
 plt.figure(figsize=(9, 5))
-sns.barplot(x=importancias.head(10).values, y=importancias.head(10).index, hue=importancias.head(10).index, palette='mako', legend=False)
-plt.title('Top 10 Variáveis Mais Determinantes para a Gravidade do Sinistro (Bauru)')
-plt.xlabel('Importância Relativa (Gini)')
+sns.barplot(x=top.values, y=top.index, color='#2b5c8f')
+plt.title('Top 10 Variáveis por Importância de Permutação')
+plt.xlabel('Piora na log-loss ao embaralhar a variável')
 plt.tight_layout()
 plt.show()""")
 ]
@@ -387,37 +344,34 @@ plt.show()""")
 # ==============================================================================
 nb4_cells = [
     nbf.v4.new_markdown_cell("""# 🗺️ Notebook 04: Visualizações e Mapeamento Geoespacial Interativo
-### Projeto: Análise e Diagnóstico de Acidentes de Trânsito em Bauru/SP (2015–2026)
+### Projeto: Análise de Sinistros de Trânsito em Bauru/SP
 
-Neste notebook consolidamos a inteligência espacial da pesquisa viária:
-1. Filtragem das ocorrências com georreferenciamento homologado dentro do território de Bauru;
+Neste notebook construímos o mapa dos registros:
+1. Filtragem dos registros com coordenadas em um retângulo aproximado ao redor de Bauru;
 2. Construção do mapa interativo via **Plotly Express** sobre renderização **Carto Positron**;
-3. Estratificação visual de severidade (Óbito, Ferido Grave, Ferido Leve, Ileso);
-4. Análise dos eixos viários críticos: Rodovias **SP-300 (Marechal Rondon)**, **SP-225** e **SP-294** vs. Avenidas Estruturais Urbanas (**Nações Unidas**, **Duque de Caxias**, **Rodrigues Alves**);
-5. Exportação do arquivo interativo `output/graficos/mapa_acidentes.html`."""),
+3. Estratificação visual de severidade, com os registros sem informação de vítimas à parte;
+4. Exportação do arquivo interativo `output/graficos/mapa_acidentes.html`."""),
 
-    nbf.v4.new_code_cell("""import pandas as pd
+    nbf.v4.new_code_cell("""import sys
+import pandas as pd
 import plotly.express as px
 
-df = pd.read_csv('../data/bauru_limpo.csv', sep=';', encoding='utf-8')
+sys.path.append('..')
+from src.metricas import CORES_SEVERIDADE, ORDEM_SEVERIDADE
+
+df = pd.read_csv('../data/bauru_limpo.csv', sep=';', encoding='utf-8', low_memory=False)
 df_geo = df[df['geo_valida']].copy()
-print(f"Total de sinistros georreferenciados válidos: {len(df_geo)} de {len(df)} ({len(df_geo)/len(df)*100:.1f}%)")"""),
+print(f"Registros com coordenadas no retângulo: {len(df_geo)} de {len(df)} ({len(df_geo)/len(df)*100:.1f}%)")"""),
 
     nbf.v4.new_markdown_cell("""## 1. Configuração do Mapa Temático Interativo"""),
 
-    nbf.v4.new_code_cell("""color_map = {
-    'FATAL': '#e11d48',                # Vermelho vibrante
-    'GRAVE': '#ea580c',                # Laranja forte
-    'LEVE': '#eab308',                 # Dourado/Amarelo
-    'ILESO / NAO INFORMADO': '#2563eb' # Azul
-}
-
-fig = px.scatter_map(
+    nbf.v4.new_code_cell("""fig = px.scatter_map(
     df_geo,
     lat='lat',
     lon='lon',
     color='severidade_categoria',
-    color_discrete_map=color_map,
+    color_discrete_map=CORES_SEVERIDADE,
+    category_orders={'severidade_categoria': ORDEM_SEVERIDADE},
     hover_name='tipo_sinistro_simplificado',
     hover_data={
         'lat': False,
@@ -432,7 +386,7 @@ fig = px.scatter_map(
     zoom=11.5,
     center={'lat': -22.3145, 'lon': -49.0587},
     map_style='carto-positron',
-    title='Mapeamento Geoespacial de Sinistros de Trânsito em Bauru/SP (2015–2026)',
+    title='Registros de Trânsito em Bauru/SP',
     height=800
 )
 

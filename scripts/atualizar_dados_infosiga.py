@@ -9,7 +9,6 @@ Endpoint Oficial: https://dadosabertos.sp.gov.br/api/3/action/package_show?id=ev
 import os
 import re
 import sys
-import glob
 import json
 import shutil
 import argparse
@@ -17,6 +16,9 @@ import tempfile
 import urllib.request
 import pandas as pd
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.metricas import classificar_severidade
 
 # ==============================================================================
 # CONFIGURAÇÕES E CAMINHOS DO PROJETO
@@ -30,8 +32,19 @@ DATA_FILE_BAURU = os.path.join(DATA_DIR, "bauru_limpo.csv")
 RESUMO_FILE = os.path.join(RELATORIOS_DIR, "resumo_anual_bauru.csv")
 
 CKAN_API_URL = "https://dadosabertos.sp.gov.br/api/3/action/package_show?id=eventos-de-sinistro"
-COD_IBGE_BAURU = "3506003"
+COD_IBGE_BAURU = 3506003
 MUNICIPIO_NOME = "BAURU"
+
+# Meses recentes são baixados de novo para incorporar revisões do Infosiga.
+MESES_REVISAO = 3
+
+COLUNAS_OBRIGATORIAS = [
+    "id_sinistro", "tipo_registro", "data_sinistro", "ano_sinistro", "mes_sinistro", "hora_sinistro",
+    "dia_da_semana", "logradouro", "tipo_via", "latitude", "longitude", "administracao", "tp_sinistro_primario",
+    "qtd_gravidade_fatal", "qtd_gravidade_grave", "qtd_gravidade_leve", "qtd_gravidade_ileso",
+    "qtd_gravidade_nao_disponivel", "qtd_pedestre", "qtd_bicicleta", "qtd_motocicleta", "qtd_automovel",
+    "qtd_onibus", "qtd_caminhao", "qtd_veic_outros",
+]
 
 
 # ==============================================================================
@@ -93,6 +106,26 @@ def extrair_ano_mes_recurso(nome_recurso, url_recurso):
     return None, None, None
 
 
+def mes_na_janela(rotulo, ultimo_rotulo):
+    """Indica se o mês AAAA/MM está na janela de revisão ou é posterior ao último mês da base."""
+    ano, mes = map(int, rotulo.split("/"))
+    ultimo_ano, ultimo_mes = map(int, ultimo_rotulo.split("/"))
+    return (ano * 12 + mes) > (ultimo_ano * 12 + ultimo_mes - MESES_REVISAO)
+
+
+def baixar_arquivo(url, destino, tentativas=3):
+    """Baixa um arquivo; retorna False se todas as tentativas falharem."""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 DadosAbertosBauru/1.0"})
+    for tentativa in range(1, tentativas + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resposta, open(destino, "wb") as arquivo:
+                shutil.copyfileobj(resposta, arquivo)
+            return True
+        except OSError as e:
+            print(f"⚠️ Falha no download (tentativa {tentativa}/{tentativas}): {type(e).__name__}")
+    return False
+
+
 def obter_ultimo_ano_mes_cadastrado():
     """
     Identifica qual é o último ano/mês presente na base local limpa de Bauru.
@@ -116,16 +149,11 @@ def parse_hora(h):
     if pd.isna(h):
         return np.nan
     s = str(h).strip()
-    if ":" in s:
-        try:
-            return int(s.split(":")[0])
-        except Exception:
-            return np.nan
     try:
-        val = int(s)
-        return val if 0 <= val <= 23 else np.nan
-    except Exception:
+        val = int(s.split(":")[0])
+    except ValueError:
         return np.nan
+    return val if 0 <= val <= 23 else np.nan
 
 
 def classificar_via(r):
@@ -167,23 +195,15 @@ def classificar_turno(h):
         return "NOITE"
 
 
-def categorizar_severidade(r):
-    """Categoriza a severidade máxima observada no evento."""
-    if r.get("obitos", 0) > 0:
-        return "FATAL"
-    elif r.get("feridos_graves", 0) > 0:
-        return "GRAVE"
-    elif r.get("feridos_leves", 0) > 0:
-        return "LEVE"
-    else:
-        return "ILESO / NAO INFORMADO"
-
-
 def aplicar_regras_limpeza_bauru(df_raw):
     """
     Aplica todas as transformações, cálculos e padronizações necessárias
     específicas para os dados de Bauru.
     """
+    ausentes = sorted(set(COLUNAS_OBRIGATORIAS) - set(df_raw.columns))
+    if ausentes:
+        raise ValueError(f"Colunas ausentes no arquivo do Infosiga: {ausentes}")
+
     df = df_raw.copy()
     
     # Tratamento de datas
@@ -213,10 +233,7 @@ def aplicar_regras_limpeza_bauru(df_raw):
         "qtd_pedestre", "qtd_bicicleta", "qtd_motocicleta", "qtd_automovel", "qtd_onibus", "qtd_caminhao", "qtd_veic_outros"
     ]
     for col in cols_qtd:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
-        else:
-            df[col] = 0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
             
     df["obitos"] = df["qtd_gravidade_fatal"]
     df["feridos_graves"] = df["qtd_gravidade_grave"]
@@ -231,7 +248,7 @@ def aplicar_regras_limpeza_bauru(df_raw):
     
     # Severidade
     df["severidade_grave_ou_fatal"] = ((df["obitos"] > 0) | (df["feridos_graves"] > 0)).astype(int)
-    df["severidade_categoria"] = df.apply(categorizar_severidade, axis=1)
+    df["severidade_categoria"] = classificar_severidade(df)
     
     # Dia da semana padronizado
     mapa_dias = {
@@ -248,6 +265,9 @@ def aplicar_regras_limpeza_bauru(df_raw):
     df["tipo_via_simplificado"] = df.apply(classificar_via, axis=1)
     df["tipo_sinistro_simplificado"] = df["tp_sinistro_primario"].apply(classificar_tipo_sinistro)
     df["turno_ajustado"] = df["hora_num"].apply(classificar_turno)
+
+    # Mesmo formato de data da base gravada em CSV
+    df["data_sinistro_dt"] = df["data_sinistro_dt"].dt.strftime("%Y-%m-%d")
     
     return df
 
@@ -261,16 +281,16 @@ def filtrar_bauru_de_arquivo_csv(caminho_csv):
     e extrai apenas os sinistros de Bauru.
     """
     print(f"📖 Processando em lotes (chunks): {caminho_csv}")
-    chunks_bauru = []
     
-    # O InfoSiga utiliza separador ';' e encoding 'latin1' ou 'utf-8'
-    for enc in ["latin1", "utf-8"]:
+    # UTF-8 é validado primeiro, pois latin1 aceita qualquer sequência de bytes
+    for enc in ["utf-8", "latin1"]:
+        chunks_bauru = []
         try:
             for chunk in pd.read_csv(caminho_csv, sep=";", encoding=enc, low_memory=False, chunksize=50000):
                 # Filtra Bauru por código IBGE ou nome do município
                 condicao = (
-                    (chunk["cod_ibge"].astype(str) == COD_IBGE_BAURU) |
-                    (chunk["municipio"].astype(str).str.upper() == MUNICIPIO_NOME)
+                    (pd.to_numeric(chunk["cod_ibge"], errors="coerce") == COD_IBGE_BAURU) |
+                    (chunk["municipio"].astype(str).str.upper().str.strip() == MUNICIPIO_NOME)
                 )
                 filtrado = chunk[condicao]
                 if len(filtrado) > 0:
@@ -291,6 +311,18 @@ def filtrar_bauru_de_arquivo_csv(caminho_csv):
 # ==============================================================================
 # INSERÇÃO INCREMENTAL E ATUALIZAÇÃO DOS RELATÓRIOS
 # ==============================================================================
+def resumir_por_ano(df):
+    """Resumo anual, com as notificações à parte porque sua cobertura varia por ano."""
+    return df.groupby("ano").agg(
+        total_registros=("id_sinistro", "count"),
+        notificacoes=("tipo_registro", lambda s: int((s == "NOTIFICACAO").sum())),
+        sinistros_fatais=("obitos", lambda s: int((s > 0).sum())),
+        obitos=("obitos", "sum"),
+        feridos_graves=("feridos_graves", "sum"),
+        feridos_leves=("feridos_leves", "sum"),
+    ).reset_index()
+
+
 def mesclar_e_salvar_dados(df_novos_tratados):
     """
     Mescla os novos dados com a base existente 'bauru_limpo.csv', remove
@@ -314,9 +346,11 @@ def mesclar_e_salvar_dados(df_novos_tratados):
     if "id_sinistro" in df_consolidado.columns:
         df_consolidado = df_consolidado.drop_duplicates(subset=["id_sinistro"], keep="last")
         
-    # Ordenar por data
-    if "data_sinistro_dt" in df_consolidado.columns:
-        df_consolidado = df_consolidado.sort_values(by="data_sinistro_dt", ascending=True)
+    # Reclassifica toda a base com a mesma regra dos registros novos
+    df_consolidado["severidade_categoria"] = classificar_severidade(df_consolidado)
+
+    # Ordenar por data e id, para que a ordem não dependa da ordem de chegada
+    df_consolidado = df_consolidado.sort_values(by=["data_sinistro_dt", "id_sinistro"])
         
     total_depois = len(df_consolidado)
     novos_inseridos = total_depois - total_antes
@@ -327,16 +361,8 @@ def mesclar_e_salvar_dados(df_novos_tratados):
     print(f"📊 Registros anteriores: {total_antes:,} | Novos inseridos: {novos_inseridos:,} | Total agora: {total_depois:,}")
     
     # Atualizar resumo anual
-    resumo_anual = df_consolidado.groupby("ano").agg(
-        total_sinistros=("id_sinistro", "count"),
-        obitos=("obitos", "sum"),
-        feridos_graves=("feridos_graves", "sum"),
-        feridos_leves=("feridos_leves", "sum"),
-        sinistros_fatais=("severidade_grave_ou_fatal", lambda x: (df_consolidado.loc[x.index, "obitos"] > 0).sum())
-    ).reset_index()
-    
     os.makedirs(RELATORIOS_DIR, exist_ok=True)
-    resumo_anual.to_csv(RESUMO_FILE, sep=";", index=False, encoding="utf-8")
+    resumir_por_ano(df_consolidado).to_csv(RESUMO_FILE, sep=";", index=False, encoding="utf-8")
     print(f"📈 Resumo anual atualizado em: {RESUMO_FILE}")
     
     return True
@@ -395,25 +421,27 @@ def main():
     # Filtrar recursos pendentes
     pendentes = []
     for r in recursos:
+        if str(r.get("format", "")).upper() != "CSV":
+            continue
         nome = r.get("name", "")
         url = r.get("url", "")
         ano, mes, rotulo = extrair_ano_mes_recurso(nome, url)
         
-        if rotulo and ult_ano_mes:
-            if rotulo > ult_ano_mes:
-                pendentes.append({"nome": nome, "url": url, "rotulo": rotulo})
-        elif rotulo and not ult_ano_mes:
+        if rotulo and (not ult_ano_mes or mes_na_janela(rotulo, ult_ano_mes)):
             pendentes.append({"nome": nome, "url": url, "rotulo": rotulo})
+
+    meses_novos = [p for p in pendentes if not ult_ano_mes or p["rotulo"] > ult_ano_mes]
             
     print(f"\n📋 Status da Sincronização:")
     print(f"• Meses disponíveis no InfoSiga: {len(recursos)}")
-    print(f"• Meses novos pendentes de ingestão: {len(pendentes)}")
+    print(f"• Meses novos pendentes de ingestão: {len(meses_novos)}")
+    print(f"• Meses recentes a reprocessar por revisão: {len(pendentes) - len(meses_novos)}")
     
     for p in pendentes:
         print(f"   -> [{p['rotulo']}] {p['nome']}")
         
     if args.verificar:
-        if not pendentes:
+        if not meses_novos:
             print("\n🎉 O projeto está 100% atualizado com a última publicação do InfoSiga SP!")
         else:
             print("\n💡 Para baixar e processar os meses pendentes acima, execute:")
@@ -423,8 +451,8 @@ def main():
     # MODO 3: Download Automático e Ingestão
     if args.automatico:
         if not pendentes:
-            print("🎉 Nada a fazer: a base de dados já contém os dados mais recentes.")
-            sys.exit(0)
+            print("⚠️ Nenhum mês encontrado no catálogo para processar.")
+            sys.exit(1)
             
         temp_dir = tempfile.mkdtemp(prefix="infosiga_download_")
         print(f"📁 Diretório temporário de download: {temp_dir}")
@@ -438,7 +466,10 @@ def main():
                 destino = os.path.join(temp_dir, nome_arq)
                 
                 print(f"\n⬇️ Baixando [{rotulo}]: {url[:70]}...")
-                urllib.request.urlretrieve(url, destino)
+                # Nada é gravado em caso de falha: o próximo ciclo tenta de novo, sem deixar lacuna
+                if not baixar_arquivo(url, destino):
+                    print(f"❌ Pipeline interrompido: falha no download de {rotulo}.")
+                    sys.exit(1)
                 
                 df_bruto = filtrar_bauru_de_arquivo_csv(destino)
                 if not df_bruto.empty:

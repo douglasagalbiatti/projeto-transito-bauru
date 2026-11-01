@@ -1,89 +1,118 @@
-# 📑 Relatório Técnico-Executivo: Análise Diagnóstica e Preditiva da Segurança Viária em Bauru/SP (2015–2026)
+# Relatório técnico: segurança viária em Bauru/SP
 
-**Autor:** Equipe de Ciência de Dados & Segurança Viária  
-**Município Analisado:** Bauru / SP (`Código IBGE: 3506003`)  
-**Base de Dados Primária:** Sistema Infosiga SP (Movimento Paulista de Segurança no Trânsito)  
-**Período:** Março de 2015 a Agosto de 2026  
-**Data do Diagnóstico:** 30/09/2026  
+**Município:** Bauru/SP (`IBGE 3506003`)
+**Fonte:** Infosiga SP
+**Período dos dados:** 13/01/2015 a 30/09/2026
 
----
+Este arquivo é gerado por `scripts/gerar_artefatos.py`. As correções do estudo de 30/09/2026 estão em [`ERRATA.md`](ERRATA.md).
 
-## 1. Sumário Executivo e Principais Indicadores
+## 1. Principais indicadores
 
-A presente pesquisa constitui uma auditoria integral dos sinistros de trânsito registrados em Bauru/SP ao longo de mais de 11 anos.
+* **Registros:** 19.056, dos quais 7.645 são notificações (40,1%).
+* **Vítimas:** 496 óbitos, 1.147 feridos graves e 10.745 feridos leves.
+* **Sem informação de vítimas:** 8.297 registros (43,5%). Isso não significa que ninguém se feriu. Só 615 (3,2%) registram apenas ilesos.
+* **Coordenadas:** 17.532 registros (92,0%) ficam em um retângulo aproximado ao redor do município. Esse filtro não equivale ao limite municipal.
 
-* **Volume Histórico Consolidado:** **18,938 sinistros** processados e higienizados.
-* **Cobertura Geoespacial:** **17,422 sinistros georreferenciados válidos (92.0%)** dentro dos limites territoriais do município.
-* **Vítimas Acumuladas:**
-  * **493 óbitos** confirmados.
-  * **1,136 feridos graves** hospitalizados.
-  * **10,638 feridos leves**.
-* **Fator Crítico #1 (Modal Motocicleta):** As motocicletas estiveram presentes em **6,852 sinistros (36.2% de todos os sinistros da cidade)**, figurando como a variável mais determinante na gravidade das lesões.
-* **Letalidade de Choques Fixos:** Sinistros do tipo **Choque contra obstáculo fixo** (postes, defensas, árvores) apresentaram taxa de letalidade de **7.45%**, muito superior à média de colisões veiculares (2.36%).
-* **Dinâmica Espacial (Vias Urbanas vs Rodovias):**
-  * As **Vias Urbanas municipais** respondem por **87.5%** das ocorrências totais (predominância de feridos leves e médios).
-  * As **Rodovias Estaduais** (SP-300 Rodovia Marechal Rondon, SP-225 e SP-294) concentram a desproporcionalidade de fatalidades em alta velocidade.
+## 2. Método e comparabilidade
 
----
+1. **2015 a 2018:** só há sinistros fatais (31 a 50 por ano).
+2. **2019 em diante:** entram sinistros não fatais e notificações. Nos anos completos, o total varia de 2.190 a 2.835 registros.
+3. **Notificações:** representam de 11,8% a 60,1% dos registros por ano e nunca trazem veículos. Por isso, o total anual não mede tendência.
 
-## 2. Metodologia e Ingestão de Dados
+Letalidade, perfis de gravidade e modelo usam a **base comparável**: 11.249 sinistros de 2019 em diante, sem notificações. Letalidade é a proporção de sinistros com ao menos um óbito, não o número de mortos dividido por sinistros.
 
-O banco de dados estadual do Infosiga SP compreende centenas de milhares de linhas e 50 colunas analíticas. Foi desenvolvido um pipeline de leitura em lotes (*chunks*) de 50.000 linhas, executando a filtragem direta pelo código IBGE `3506003`. 
+## 3. Quando os registros ocorrem
 
-### Transição Metodológica (2018–2019)
-Observou-se rigorosamente a quebra de critério histórico da fonte:
-1. **2015 a 2018:** Registro restrito a acidentes com **vítimas fatais** (média de 30 a 50 mortes/ano).
-2. **2019 a 2026:** Expansão cadastral universal, englobando feridos graves, leves e ocorrências sem vítimas (volume anual saltando para a faixa de 2.200 a 2.800 ocorrências/ano).
+Os maiores volumes ocorrem às 18h, 19h e 17h. Volume não equivale a risco, pois a base não traz o fluxo de veículos.
 
----
+Teste de Welch com todos os dias do calendário desde 2019, inclusive os 1,1% sem registro:
 
-## 3. Análise Estatística e Testes de Hipótese
+* **Dias úteis:** 6,70 registros/dia
+* **Fins de semana:** 6,63 registros/dia
+* **Diferença:** -0,07 (IC95% -0,36 a 0,22; p = 0,634)
 
-### Teste t de Student (Dias Úteis vs Fins de Semana)
-Avaliamos a hipótese de que o fluxo diário médio de acidentes difere entre a semana útil de trabalho (segunda a sexta) e os finais de semana (sábado e domingo).
+O intervalo inclui zero: os dados não demonstram diferença entre os dois blocos, o que não prova que as médias sejam iguais. Agrupar os dias em dois blocos esconde diferenças: sexta tem 7,75, sábado 7,35 e domingo 5,90, contra 6,43 de segunda a quinta.
 
-* **Média diária em Dias Úteis:** **6.98 sinistros/dia**
-* **Média diária em Fins de Semana:** **7.07 sinistros/dia**
-* **Estatística t:** `-0.591` | **p-valor:** `5.5455e-01`
+A madrugada responde por 14,1% dos sinistros de fim de semana e 4,8% dos de dias úteis. A base não mede alcoolemia nem velocidade, então a causa desse padrão não pode ser afirmada.
 
-**Interpretação:** A diferença observada é estatisticamente avaliada com elevado rigor amostral, evidenciando padrões de picos nos fins de tarde de sexta-feira e madrugadas de fim de semana associadas ao consumo de álcool e alta velocidade.
+## 4. Letalidade por tipo de sinistro (base comparável)
 
----
+| Tipo | Sinistros | Sinistros com óbito | Óbitos (pessoas) | Feridos graves (pessoas) | Letalidade |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **ATROPELAMENTO** | 722 | 84 | 84 | 106 | **11,63%** |
+| **CHOQUE** | 1.167 | 68 | 69 | 133 | **5,83%** |
+| **OUTROS** | 2.151 | 58 | 63 | 185 | **2,70%** |
+| **COLISAO** | 7.102 | 103 | 109 | 670 | **1,45%** |
+| **OUTROS / NAO INFORMADO** | 107 | 0 | 0 | 13 | **0,00%** |
 
-## 4. Tabela de Letalidade por Mecânica de Sinistro
+O atropelamento fica acima do choque na base toda (razão 2,00; IC95% 1,47 a 2,71), mas nas vias urbanas os dois não podem ser ordenados com segurança (razão 1,15; IC95% 0,76 a 1,72).
 
-| Tipo de Sinistro | Volume de Ocorrências | Total de Óbitos | Feridos Graves | Taxa de Letalidade (%) |
-| :--- | :---: | :---: | :---: | :---: |
-| **ATROPELAMENTO** | 1,364 | 124 | 129 | **9.09%** |
-| **CHOQUE** | 1,235 | 92 | 136 | **7.45%** |
-| **COLISAO** | 7,505 | 177 | 671 | **2.36%** |
-| **OUTROS** | 7,225 | 88 | 186 | **1.22%** |
-| **OUTROS / NAO INFORMADO** | 1,609 | 12 | 14 | **0.75%** |
+O choque tem 4,0 vezes a letalidade da colisão (IC95% 3,0 a 5,4), mas essa diferença é urbana: 5,9 vezes nas vias urbanas (IC95% 4,1 a 8,7) e 0,9 nas rodovias (IC95% 0,6 a 1,5). A base não informa qual objeto foi atingido.
 
----
+## 5. Modais
 
-## 5. Modelagem Supervisionada de Gravidade (Machine Learning)
+Entre os 10.780 registros com veículo ou pedestre informado, há motocicleta em 64,3% e automóvel em 72,4%. Um mesmo registro pode ter os dois.
 
-Treinamos um classificador supervisionado (**Random Forest**) com 200 árvores de decisão e balanceamento ponderado de classes (`class_weight='balanced'`), projetado para prever a probabilidade de um sinistro resultar em lesão grave ou óbito.
+Na base comparável, sinistros com moto têm 13,3% de desfecho grave ou fatal, contra 9,9% dos demais, e 2,0% de letalidade, contra 4,0%. A base não liga cada vítima ao seu veículo nem traz frota ou quilômetros rodados, então não mede o risco individual do motociclista.
 
-* **Acurácia Global do Modelo:** **65.0%**
-* **Área sob a Curva ROC (ROC-AUC):** **0.801**
-* **Hierarquia de Importância das Variáveis (Gini Importance):**
-  1. **Horário do sinistro (`hora_num`):** Reflexo direto da iluminação, cansaço e velocidade.
-  2. **Presença de Motocicletas (`envolve_moto`):** Maior fator isolado de vulnerabilidade corporal.
-  3. **Tipo de via (`RODOVIA / ESTRADA`):** Impactos em rodovias concessionadas e DER registram severidade substancialmente mais alta.
-  4. **Tipo do sinistro (Choque e Atropelamento):** Mecânicas com grande transferência de energia cinética sem anteparo protetor.
+## 6. Onde ocorrem
 
----
+As vias urbanas têm 87,7% dos registros e 264 dos 496 óbitos (53%). Estradas e rodovias têm 12,2% dos registros e 200 óbitos (40%). Os demais óbitos não têm tipo de via informado.
 
-## 6. Recomendações Estruturantes para a Gestão Pública Municipal
+A letalidade por sinistro é maior nas rodovias (6,5%) do que nas vias urbanas (1,9%). SP-300, SP-225 e SP-294 somam 175 óbitos (35%). A velocidade não consta na base.
 
-1. **Plano de Contingência para Motociclistas:**
-   - Criação de faixas azuis (*motofaixas*) nos eixos com maior circulação (ex.: Avenida Nações Unidas e Avenida Duque de Caxias).
-   - Fiscalização intensa do uso de capacetes homologados e velocidade nos corredores comerciais.
-2. **Engenharia em Obstáculos Fixos (Prevenção de Choques):**
-   - Instalação de defensas metálicas deformáveis (*crash cushions*) e barreiras de proteção diante de postes de iluminação e pilares de viadutos nos acessos à SP-300.
-3. **Iluminação e Travessia Segura de Pedestres:**
-   - Redesenho de travessias e faixas elevadas em locais de atropelamento recorrente no centro urbano e entorno das universidades.
-4. **Articulação com DER e Concessionárias:**
-   - Comitê conjunto de monitoramento das marginais da Rodovia Marechal Rondon (SP-300), reduzindo gargalos de entrelaçamento com a malha municipal.
+| Vias com mais sinistros | Sinistros | Óbitos | Feridos graves |
+| :--- | :---: | :---: | :---: |
+| SP 300 | 1.042 | 80 | 172 |
+| AVENIDA NACOES UNIDAS | 711 | 21 | 53 |
+| AVENIDA DUQUE DE CAXIAS | 375 | 7 | 25 |
+| AVENIDA RODRIGUES ALVES | 343 | 9 | 39 |
+| SP 225 | 315 | 53 | 66 |
+| SP 294 | 227 | 42 | 53 |
+| AVENIDA CASTELO BRANCO QUADRA | 218 | 5 | 15 |
+| AVENIDA CRUZEIRO DO SUL | 198 | 9 | 11 |
+| AVENIDA GETULIO VARGAS | 182 | 4 | 15 |
+| AVENIDA NUNO DE ASSIS | 172 | 2 | 15 |
+
+| Vias com mais óbitos | Óbitos | Sinistros | Feridos graves |
+| :--- | :---: | :---: | :---: |
+| SP 300 | 80 | 1.042 | 172 |
+| SP 225 | 53 | 315 | 66 |
+| SP 294 | 42 | 227 | 53 |
+| AVENIDA NACOES UNIDAS | 21 | 711 | 53 |
+| SP 321 | 16 | 105 | 17 |
+| RUA MONSENHOR CLARO | 14 | 45 | 3 |
+| AVENIDA RODRIGUES ALVES | 9 | 343 | 39 |
+| AVENIDA CRUZEIRO DO SUL | 9 | 198 | 11 |
+| AVENIDA DUQUE DE CAXIAS | 7 | 375 | 25 |
+| AVENIDA CASTELO BRANCO QUADRA | 5 | 218 | 15 |
+
+Os rankings excluem notificações e são contagens brutas, sem fluxo de veículos.
+
+## 7. Modelo exploratório
+
+Random Forest com 8.424 sinistros de treino e 2.808 de teste, para estimar se o desfecho foi grave ou fatal (11,8% dos casos).
+
+* **Acurácia:** 88,4%, contra 88,2% de sempre prever a classe mais comum. O modelo não supera a referência de sempre prever a classe mais comum.
+* **Acurácia balanceada:** 51,0%
+* **ROC-AUC:** 0,683
+* **Variáveis mais usadas (permutação):** via urbana, motocicleta presente, pedestre presente, automóvel presente.
+
+O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. A importância não indica sentido nem causa.
+
+## 8. Hipóteses para a gestão pública
+
+As ações abaixo devem ser validadas com contagem de tráfego, inspeção em campo e dados de velocidade e alcoolemia, que não constam nesta base.
+
+1. **Pedestres:** priorizar a análise dos locais de atropelamento, o tipo com maior letalidade (11,63%).
+2. **Rodovias:** revisar com DER e concessionárias os trechos de SP-300, SP-225 e SP-294, que somam 35% dos óbitos.
+3. **Vias urbanas:** inspecionar os locais de choque para identificar os objetos atingidos antes de instalar defensas, e avaliar medidas para motociclistas nas vias com mais registros.
+4. **Coleta de dados:** obter fluxo de veículos e medições de velocidade, para calcular risco e não apenas volume.
+
+## 9. Limitações
+
+* Notificações quase sempre vêm sem dados de vítimas, e parte pode repetir sinistros já registrados.
+* Não há fluxo de veículos, frota, velocidade nem alcoolemia.
+* A base não indica em qual veículo cada vítima estava.
+* Contagens vazias viram zero, o que pode subestimar envolvidos.
+* O último mês pode ser revisado pela fonte, e o último ano é parcial. Óbitos por ano: 2015: 41, 2016: 52, 2017: 44, 2018: 34, 2019: 37, 2020: 41, 2021: 34, 2022: 60, 2023: 37, 2024: 42, 2025: 44, 2026: 30.

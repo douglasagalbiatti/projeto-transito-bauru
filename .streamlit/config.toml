@@ -1,0 +1,3 @@
+# Os cartões e gráficos do painel usam cores para fundo escuro.
+[theme]
+base = "dark"

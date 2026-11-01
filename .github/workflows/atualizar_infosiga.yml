@@ -7,6 +7,10 @@ on:
     - cron: '0 23 28-31 * *'
   workflow_dispatch: # Permite que você também dispare manualmente pelo botão no GitHub se quiser
 
+# Permite que o robô do GitHub Actions publique a base atualizada
+permissions:
+  contents: write
+
 jobs:
   atualizar-dados:
     runs-on: ubuntu-latest
