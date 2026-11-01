@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import URLError
 
+import nbformat
 import pandas as pd
 
 from scripts import gerar_artefatos
@@ -83,12 +84,31 @@ class TestArtefatos(unittest.TestCase):
         with patch("src.metricas.urlopen", side_effect=URLError("sem rede")):
             self.assertIsNone(ler_artefato("nao_existe.png"))
 
+    def test_saidas_plotly_saem_do_notebook_executado(self):
+        notebook = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell("x")])
+        notebook.cells[0].outputs = [
+            nbformat.v4.new_output("display_data", data={gerar_artefatos.SAIDA_PLOTLY: {}}),
+            nbformat.v4.new_output("display_data", data={"image/png": "abc"}),
+            nbformat.v4.new_output("stream", text="ok"),
+        ]
+        saidas = gerar_artefatos.remover_saidas_plotly(notebook).cells[0].outputs
+        self.assertEqual(len(saidas), 2)
+        self.assertNotIn(gerar_artefatos.SAIDA_PLOTLY, saidas[0]["data"])
+
+    def test_notebooks_executados_sao_publicados_e_citados_no_readme(self):
+        with open(os.path.join(RAIZ, "scripts", "publicar_artefatos.sh"), encoding="utf-8") as arquivo:
+            self.assertIn("output/notebooks", arquivo.read())
+        readme = self._readme(self.indicadores)
+        for nome in gerar_artefatos.NOTEBOOKS:
+            self.assertIn(f"blob/artefatos/output/notebooks/{nome}", readme)
+
     def test_workflow_publica_antes_do_commit_e_nao_versiona_graficos(self):
         with open(os.path.join(RAIZ, ".github", "workflows", "atualizar_infosiga.yml"), encoding="utf-8") as arquivo:
             workflow = arquivo.read()
         self.assertLess(workflow.index("gerar_artefatos.py"), workflow.index("publicar_artefatos.sh"))
         self.assertLess(workflow.index("publicar_artefatos.sh"), workflow.index("git push origin main"))
-        self.assertIsNone(re.search(r"git add .*output/graficos", workflow))
+        self.assertIn("requirements-artefatos.txt", workflow)
+        self.assertIsNone(re.search(r"git add .*output/(graficos|notebooks)", workflow))
 
 
 if __name__ == "__main__":

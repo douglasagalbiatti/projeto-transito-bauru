@@ -1,10 +1,13 @@
 """
 Gera gráficos, mapa, relatório e README a partir de data/bauru_limpo.csv.
 
-Os gráficos e o mapa não são versionados na main:
+Os notebooks 03 e 04 são executados antes, com os resultados guardados em output/notebooks.
+
+Gráficos, mapa e notebooks executados não são versionados na main:
 'scripts/publicar_artefatos.sh' os publica na branch 'artefatos'.
 """
 
+import argparse
 import os
 import sys
 
@@ -34,6 +37,11 @@ from src.modelo import treinar_modelo
 DATA_FILE = os.path.join(BASE_DIR, "data", "bauru_limpo.csv")
 GRAFICOS_DIR = os.path.join(BASE_DIR, "output", "graficos")
 RELATORIO_MD = os.path.join(BASE_DIR, "output", "relatorios", "relatorio_final_bauru.md")
+NOTEBOOKS_DIR = os.path.join(BASE_DIR, "notebooks")
+NOTEBOOKS_EXECUTADOS_DIR = os.path.join(BASE_DIR, "output", "notebooks")
+NOTEBOOKS = ["03-analise-bauru.ipynb", "04-visualizacoes.ipynb"]
+# O GitHub não exibe esta saída, que só deixaria o notebook pesado demais para abrir lá
+SAIDA_PLOTLY = "application/vnd.plotly.v1+json"
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 README_MD = os.path.join(BASE_DIR, "README.md")
 ORDEM_DIAS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
@@ -330,6 +338,26 @@ As ações abaixo devem ser validadas com contagem de tráfego, inspeção em ca
         arquivo.write(texto)
 
 
+def remover_saidas_plotly(notebook):
+    """Retira do notebook executado as saídas que o GitHub não consegue exibir."""
+    for celula in notebook.cells:
+        if celula.cell_type == "code":
+            celula.outputs = [saida for saida in celula.outputs if SAIDA_PLOTLY not in saida.get("data", {})]
+    return notebook
+
+
+def executar_notebooks():
+    """Executa os notebooks e guarda as cópias com resultados, sem alterar os originais."""
+    import nbformat
+    from nbconvert.preprocessors import ExecutePreprocessor
+
+    os.makedirs(NOTEBOOKS_EXECUTADOS_DIR, exist_ok=True)
+    for nome in NOTEBOOKS:
+        notebook = nbformat.read(os.path.join(NOTEBOOKS_DIR, nome), as_version=4)
+        ExecutePreprocessor(timeout=600, kernel_name="python3").preprocess(notebook, {"metadata": {"path": NOTEBOOKS_DIR}})
+        nbformat.write(remover_saidas_plotly(notebook), os.path.join(NOTEBOOKS_EXECUTADOS_DIR, nome))
+
+
 def gerar_readme(indicadores, destino=README_MD):
     """Preenche o modelo do README com os indicadores da base."""
     ambiente = Environment(
@@ -347,6 +375,12 @@ def gerar_readme(indicadores, destino=README_MD):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sem-notebooks", action="store_true", help="Não executa os notebooks.")
+    args = parser.parse_args()
+    # Antes do restante, pois o notebook 04 também grava o mapa, e o publicado é o do gerador
+    if not args.sem_notebooks:
+        executar_notebooks()
     df = pd.read_csv(DATA_FILE, sep=";", encoding="utf-8", low_memory=False)
     os.makedirs(GRAFICOS_DIR, exist_ok=True)
     resultado = treinar_modelo(df)

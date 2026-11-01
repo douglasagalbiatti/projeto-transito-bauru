@@ -62,9 +62,10 @@ jobs:
             echo "Nenhum dado novo encontrado."
           fi
 
-      - name: Gerar Gráficos, Mapa, Relatório e README
+      - name: Executar Notebooks e Gerar Gráficos, Mapa, Relatório e README
         if: steps.check_dados.outputs.gerar == 'true'
         run: |
+          pip install -r requirements-artefatos.txt
           python scripts/gerar_artefatos.py
 
       # Publica antes do commit, para que o README novo nunca aponte para arquivos que ainda não existem

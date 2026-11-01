@@ -4,7 +4,7 @@
 set -euo pipefail
 
 BRANCH="artefatos"
-ARQUIVOS=(output/graficos)
+ARQUIVOS=(output/graficos output/notebooks)
 
 # Índice temporário: não toca no índice nem nos arquivos da branch atual
 export GIT_INDEX_FILE

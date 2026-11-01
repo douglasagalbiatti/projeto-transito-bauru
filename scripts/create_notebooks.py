@@ -406,7 +406,29 @@ fig.update_layout(
 
 fig.show()"""),
 
-    nbf.v4.new_markdown_cell("""## 2. Exportação do Artefato Interativo HTML"""),
+    nbf.v4.new_markdown_cell("""## 2. Mapa Estático por Severidade
+
+O GitHub não exibe o mapa interativo dentro do notebook; esta figura mostra os mesmos pontos em uma imagem."""),
+
+    nbf.v4.new_code_cell("""import matplotlib.pyplot as plt
+from src.metricas import br
+
+fig_estatica, eixo = plt.subplots(figsize=(10, 9))
+# Do menos grave ao fatal, para que os casos graves fiquem por cima
+for severidade in ORDEM_SEVERIDADE[::-1]:
+    pontos = df_geo[df_geo['severidade_categoria'] == severidade]
+    eixo.scatter(
+        pontos['lon'], pontos['lat'], c=CORES_SEVERIDADE[severidade],
+        s=12 if severidade == 'FATAL' else 4, alpha=0.7, label=f"{severidade} ({br(len(pontos))})",
+    )
+eixo.set_aspect(1.08)  # Compensa a escala da longitude na latitude de Bauru
+eixo.set_title(f"Registros com coordenadas em Bauru/SP ({br(len(df_geo))})", fontweight='bold')
+eixo.set_xlabel('Longitude')
+eixo.set_ylabel('Latitude')
+eixo.legend(title='Severidade', loc='upper left', markerscale=2)
+plt.show()"""),
+
+    nbf.v4.new_markdown_cell("""## 3. Exportação do Artefato Interativo HTML"""),
 
     nbf.v4.new_code_cell("""import os
 

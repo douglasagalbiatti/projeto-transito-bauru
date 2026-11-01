@@ -7,3 +7,4 @@ __pycache__/
 .venv/
 # Arquivos gerados pesados: publicados na branch 'artefatos', substituída a cada atualização
 output/graficos/
+output/notebooks/

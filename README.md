@@ -8,9 +8,11 @@
 
 Estudo de Ciência de Dados sobre os registros de trânsito de **Bauru/SP** no Infosiga SP, com ingestão de dados estaduais, análise estatística, modelo exploratório de gravidade, mapa interativo e painel em Streamlit.
 
+**Análise passo a passo, com código e resultados:** [análise estatística e modelo](https://github.com/douglasagalbiatti/projeto-transito-bauru/blob/artefatos/output/notebooks/03-analise-bauru.ipynb) · [mapas](https://github.com/douglasagalbiatti/projeto-transito-bauru/blob/artefatos/output/notebooks/04-visualizacoes.ipynb)
+
 Os números abaixo usam os dados de 13/01/2015 a 30/09/2026. O [relatório técnico](output/relatorios/relatorio_final_bauru.md) traz a análise completa. As correções ao estudo de 30/09/2026 estão na [errata](output/relatorios/ERRATA.md).
 
-> **Atualização automática:** este README, o relatório, os gráficos e o mapa são gerados de novo quando chegam dados mensais. Gráficos e mapa ficam na branch [`artefatos`](https://github.com/douglasagalbiatti/projeto-transito-bauru/tree/artefatos), que guarda apenas a versão mais recente. O `relatorio_bauru.pdf` é um registro histórico e mantém o texto de 30/09/2026.
+> **Atualização automática:** este README, o relatório, os gráficos, o mapa e os notebooks executados são gerados de novo quando chegam dados mensais. Os arquivos pesados ficam na branch [`artefatos`](https://github.com/douglasagalbiatti/projeto-transito-bauru/tree/artefatos), que guarda apenas a versão mais recente. O `relatorio_bauru.pdf` é um registro histórico e mantém o texto de 30/09/2026.
 
 ---
 
@@ -58,9 +60,10 @@ projeto_transito_bauru/
 ├── data/
 │   ├── bauru_limpo.csv                  # Base tratada, versionada
 │   └── sinistros_*.csv                  # Arquivos brutos do Infosiga, fora do Git
-├── notebooks/                           # Exploração, limpeza, análise e mapa
+├── notebooks/                           # Exploração, limpeza, análise e mapa, sem resultados salvos
 ├── output/
 │   ├── graficos/                        # Figuras PNG e mapa HTML (na branch artefatos)
+│   ├── notebooks/                       # Notebooks 03 e 04 executados (na branch artefatos)
 │   └── relatorios/
 │       ├── relatorio_final_bauru.md     # Relatório técnico atual
 │       ├── resumo_anual_bauru.csv       # Tabela anual
@@ -102,7 +105,11 @@ Atualizar a base com os meses novos, reprocessando os três mais recentes para i
 python scripts/atualizar_dados_infosiga.py --automatico
 ```
 
-Regenerar gráficos, mapa, relatório e README. A atualização mensal automática já faz isso; altere os textos do README em `templates/README.md.j2` e os do relatório em `scripts/gerar_artefatos.py`, pois os arquivos gerados são sobrescritos:
+Executar os notebooks 03 e 04 e regenerar gráficos, mapa, relatório e README (com `--sem-notebooks`, a execução dos notebooks é pulada). A atualização mensal automática já faz isso; altere os textos do README em `templates/README.md.j2` e os do relatório em `scripts/gerar_artefatos.py`, pois os arquivos gerados são sobrescritos:
+
+```bash
+pip install -r requirements-artefatos.txt
+```
 
 ```bash
 python scripts/gerar_artefatos.py
