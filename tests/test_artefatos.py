@@ -9,9 +9,15 @@ from urllib.error import URLError
 
 import nbformat
 import pandas as pd
+from streamlit.testing.v1 import AppTest
 
 from scripts import gerar_artefatos
-from src.indicadores import calcular_indicadores
+from src.indicadores import (
+    calcular_indicadores,
+    frase_atropelamento_gestao,
+    frase_choque_urbano,
+    frase_notificacoes_veiculos,
+)
 from src.metricas import br, ler_artefato, ranking_vias
 from src.modelo import treinar_modelo
 
@@ -115,6 +121,21 @@ class TestArtefatos(unittest.TestCase):
             self.assertEqual(por_obitos, ["RUA D", "RUA C", "RUA A", "RUA B"])
             por_sinistros = ranking_vias(ordem, por="sinistros")["logradouro"].tolist()
             self.assertEqual(por_sinistros, ["RUA D", "RUA C", "RUA A", "RUA B"])
+
+    def test_frases_do_painel_acompanham_os_dados(self):
+        self.assertIn("a maior letalidade", frase_atropelamento_gestao(True, 11.6))
+        self.assertNotIn("a maior letalidade", frase_atropelamento_gestao(False, 11.6))
+        self.assertIn("5,9 vezes", frase_choque_urbano((5.9, 4.1, 8.7)))
+        self.assertIn("não demonstram", frase_choque_urbano((1.2, 0.7, 2.0)))
+        self.assertIn("nunca", frase_notificacoes_veiculos(True))
+        self.assertIn("raramente", frase_notificacoes_veiculos(False))
+
+    def test_painel_abre_com_as_frases_calculadas(self):
+        painel = AppTest.from_file(os.path.join(RAIZ, "app.py"), default_timeout=120).run()
+        self.assertFalse(painel.exception)
+        textos = " ".join(bloco.value for bloco in painel.markdown)
+        self.assertIn(self.indicadores["via_motos_urbana"], textos)
+        self.assertIn(self.indicadores["frase_choque_urbano"], textos)
 
     def test_workflow_publica_antes_do_commit_e_nao_versiona_graficos(self):
         with open(os.path.join(RAIZ, ".github", "workflows", "atualizar_infosiga.yml"), encoding="utf-8") as arquivo:

@@ -1,5 +1,5 @@
 """
-Dashboard Interativo de Segurança Viária — Bauru/SP (2015–2026)
+Dashboard Interativo de Segurança Viária — Bauru/SP
 Desenvolvido com Streamlit, Plotly e Scikit-Learn
 Dados: Infosiga SP (Movimento Paulista de Segurança no Trânsito)
 """
@@ -26,13 +26,14 @@ from src.metricas import (
     razao_letalidade,
     tabela_letalidade,
 )
+from src.indicadores import calcular_indicadores
 from src.modelo import treinar_modelo
 
 # ==============================================================================
 # CONFIGURAÇÃO DA PÁGINA STREAMLIT
 # ==============================================================================
 st.set_page_config(
-    page_title="Segurança Viária — Bauru/SP (2015–2026)",
+    page_title="Segurança Viária — Bauru/SP",
     page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -194,6 +195,10 @@ def carregar_artefato(nome):
 def get_ml_model():
     return treinar_modelo(load_data())
 
+@st.cache_resource(ttl="1h", show_spinner="Calculando indicadores...")
+def get_indicadores():
+    return calcular_indicadores(load_data(), get_ml_model())
+
 def mostrar_grafico(fig):
     """Exibe um gráfico Plotly com vírgula decimal e ponto de milhar."""
     fig.update_layout(separators=",.")
@@ -212,6 +217,7 @@ inicio_dados = df_completo['data_sinistro_dt'].min()
 fim_dados = df_completo['data_sinistro_dt'].max()
 periodo_dados = f"{inicio_dados:%m/%Y} a {fim_dados:%m/%Y}"
 base_tipos = base_comparavel(df_completo)
+indicadores = get_indicadores()
 
 # ==============================================================================
 # BARRA LATERAL (FILTROS INTERATIVOS)
@@ -414,7 +420,7 @@ with tab1:
     <div class="insight-box">
         <strong>📌 Ressalva metodológica:</strong>
         <br>• <strong>2015 a 2018:</strong> o sistema registra apenas sinistros fatais.
-        <br>• <strong>2019 em diante:</strong> entram sinistros não fatais e notificações. As notificações nunca trazem veículos e vão de {br(pct_notificacoes.min(), 1)}% a {br(pct_notificacoes.max(), 1)}% dos registros por ano, então o total anual não mede tendência.
+        <br>• <strong>2019 em diante:</strong> entram sinistros não fatais e notificações. As notificações {indicadores['frase_notificacoes_veiculos']} e vão de {br(pct_notificacoes.min(), 1)}% a {br(pct_notificacoes.max(), 1)}% dos registros por ano, então o total anual não mede tendência.
         <br>• <strong>Base comparável:</strong> letalidade, perfis de gravidade e modelo usam sinistros de 2019 em diante, sem notificações.
     </div>
     """, unsafe_allow_html=True)
@@ -470,7 +476,8 @@ with tab1:
             height=430
         )
         mostrar_grafico(fig_anual)
-        st.caption(f"O último ano é parcial: os dados vão até {fim_dados:%d/%m/%Y}.")
+        if indicadores['ano_parcial']:
+            st.caption(f"O último ano é parcial: os dados vão até {fim_dados:%d/%m/%Y}.")
 
     with col_side:
         st.markdown("#### 📋 Resumo por Ano (base completa, sem filtros)")
@@ -510,7 +517,7 @@ with tab2:
     <div class="insight-box-danger">
         <strong>⚠️ Base comparável, sem os filtros:</strong>
         <br>Atropelamentos têm {br(letal_geral['ATROPELAMENTO'], 2)}% de letalidade, choques {br(letal_geral['CHOQUE'], 2)}% e colisões {br(letal_geral['COLISAO'], 2)}%.
-        <br>O choque tem {br(razao_choque, 1)} vezes a letalidade da colisão (IC95% {br(ic_choque_inf, 1)} a {br(ic_choque_sup, 1)}), mas a diferença é urbana: {br(razao_urbana[0], 1)} vezes nas vias urbanas e {br(razao_rodovia[0], 1)} nas rodovias (IC95% {br(razao_rodovia[1], 1)} a {br(razao_rodovia[2], 1)}).
+        <br>O choque tem {br(razao_choque, 1)} vezes a letalidade da colisão (IC95% {br(ic_choque_inf, 1)} a {br(ic_choque_sup, 1)}), {'mas a diferença é urbana:' if indicadores['choque_so_urbano'] else 'com'} {br(razao_urbana[0], 1)} vezes nas vias urbanas e {br(razao_rodovia[0], 1)} nas rodovias (IC95% {br(razao_rodovia[1], 1)} a {br(razao_rodovia[2], 1)}).
         <br>Letalidade = sinistros com óbito ÷ sinistros do tipo. A base não informa velocidade nem qual objeto foi atingido.
     </div>
     """, unsafe_allow_html=True)
@@ -1038,7 +1045,7 @@ with tab7:
         <div class="metric-card" style="border-left: 4px solid #f59e0b;">
             <h4 style="color: #fbbf24; margin-bottom: 8px;">1. Travessia Segura para Pedestres</h4>
             <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">
-                • <strong>Locais de atropelamento:</strong> O tipo tem a maior letalidade da base comparável ({br(letal_geral['ATROPELAMENTO'], 2)}% dos sinistros). Vale começar pelos locais recorrentes, confirmados em campo.<br>
+                • <strong>Locais de atropelamento:</strong> {indicadores['frase_atropelamento_gestao']} Vale começar pelos locais recorrentes, confirmados em campo.<br>
                 • <strong>Possíveis medidas:</strong> Faixas elevadas, refúgios centrais, iluminação e redução de velocidade, conforme o que a inspeção indicar.
             </p>
         </div>
@@ -1048,7 +1055,7 @@ with tab7:
         <div class="metric-card" style="border-left: 4px solid #ef4444;">
             <h4 style="color: #f87171; margin-bottom: 8px;">2. Choques em Vias Urbanas</h4>
             <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">
-                • <strong>Evidência:</strong> Nas vias urbanas, o choque tem {br(razao_urbana[0], 1)} vezes a letalidade da colisão.<br>
+                • <strong>Evidência:</strong> {indicadores['frase_choque_urbano']}<br>
                 • <strong>Primeiro passo:</strong> Inspecionar os locais para identificar o que foi atingido, pois a base não informa o objeto, e só então avaliar defensas ou atenuadores.
             </p>
         </div>
@@ -1070,15 +1077,15 @@ with tab7:
             <h4 style="color: #60a5fa; margin-bottom: 8px;">4. Motociclistas nas Vias com Mais Registros</h4>
             <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">
                 • <strong>Evidência:</strong> Há motocicleta em {br(com_modal_informado(df_completo)['envolve_moto'].mean() * 100, 1)}% dos registros com modal informado. A base não mede o risco individual do motociclista.<br>
-                • <strong>Possíveis medidas:</strong> Avaliar faixas azuis e áreas de espera em semáforos nas vias e horários com mais registros, como a Av. Nações Unidas, com estudo de fluxo.
+                • <strong>Possíveis medidas:</strong> Avaliar faixas azuis e áreas de espera em semáforos nas vias e horários com mais registros, como a {indicadores['via_motos_urbana']}, a via urbana com mais sinistros com moto, com estudo de fluxo.
             </p>
         </div>
         """, unsafe_allow_html=True)
 
     st.divider()
     st.markdown("#### Limitações dos Dados")
-    st.markdown("""
-    - **Notificações:** Quase sempre vêm sem dados de vítimas e nunca trazem veículos, e parte pode repetir sinistros já registrados.
+    st.markdown(f"""
+    - **Notificações:** Quase sempre vêm sem dados de vítimas e {indicadores['frase_notificacoes_veiculos']}, e parte pode repetir sinistros já registrados.
     - **Sem Denominador de Exposição:** Não há fluxo de veículos nem frota, então volumes não medem risco.
     - **Sem Variáveis Comportamentais:** A base não traz velocidade nem alcoolemia.
     - **Vítima sem Veículo:** A base não indica em qual veículo cada vítima estava.

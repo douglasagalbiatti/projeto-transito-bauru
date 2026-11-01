@@ -253,7 +253,7 @@ Este arquivo é gerado por `scripts/gerar_artefatos.py`. As correções do estud
 
 1. **2015 a 2018:** só há sinistros fatais ({fatais_ate_2018.min()} a {fatais_ate_2018.max()} por ano).
 2. **2019 em diante:** entram sinistros não fatais e notificações. Nos anos completos, o total varia de {br(completos.min())} a {br(completos.max())} registros.
-3. **Notificações:** representam de {br(i['notif_pct_min'], 1)}% a {br(i['notif_pct_max'], 1)}% dos registros por ano e {'nunca' if i['notificacoes_sem_veiculo'] else 'raramente'} trazem veículos. Por isso, o total anual não mede tendência.
+3. **Notificações:** representam de {br(i['notif_pct_min'], 1)}% a {br(i['notif_pct_max'], 1)}% dos registros por ano e {i['frase_notificacoes_veiculos']}. Por isso, o total anual não mede tendência.
 
 Letalidade, perfis de gravidade e modelo usam a **base comparável**: {br(len(comparavel))} sinistros de 2019 em diante, sem notificações. Letalidade é a proporção de sinistros com ao menos um óbito, não o número de mortos dividido por sinistros.
 

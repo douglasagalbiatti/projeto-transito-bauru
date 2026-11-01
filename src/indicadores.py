@@ -12,6 +12,7 @@ from src.metricas import (
     com_modal_informado,
     comparar_dias,
     normalizar_via,
+    ranking_vias,
     razao_letalidade,
     tabela_letalidade,
 )
@@ -49,6 +50,23 @@ def _frase_atropelamento(geral: tuple, urbano: tuple) -> str:
     return f"{inicio}, mas nas vias urbanas os dois não podem ser ordenados com segurança {detalhe_urbano}."
 
 
+def frase_notificacoes_veiculos(sem_veiculo: bool) -> str:
+    return "nunca trazem veículos" if sem_veiculo else "raramente trazem veículos"
+
+
+def frase_atropelamento_gestao(mais_letal: bool, taxa: float) -> str:
+    """Só chama o atropelamento de tipo mais letal enquanto os dados sustentam isso."""
+    inicio = "O tipo tem a maior letalidade da base comparável" if mais_letal else "O tipo tem letalidade relevante na base comparável"
+    return f"{inicio} ({br(taxa, 2)}% dos sinistros)."
+
+
+def frase_choque_urbano(razao: tuple) -> str:
+    """Só afirma que o choque é mais letal se o intervalo da razão ficar acima de 1."""
+    if razao[1] > 1:
+        return f"Nas vias urbanas, o choque tem {br(razao[0], 1)} vezes a letalidade da colisão."
+    return f"Nas vias urbanas, os dados não demonstram que o choque seja mais letal que a colisão (razão {br(razao[0], 1)}; {_ic_1(razao)})."
+
+
 def calcular_indicadores(df: pd.DataFrame, resultado: dict) -> dict:
     """Calcula os números e as condições que sustentam os textos dos documentos."""
     datas = pd.to_datetime(df["data_sinistro_dt"])
@@ -83,6 +101,7 @@ def calcular_indicadores(df: pd.DataFrame, resultado: dict) -> dict:
     letal_via = comparavel.groupby("tipo_via")["obitos"].apply(lambda s: (s > 0).mean() * 100)
     obitos_rodovias = df[normalizar_via(df["logradouro"]).isin(RODOVIAS_PRINCIPAIS)]["obitos"].sum()
     modal = com_modal_informado(df)
+    motos_urbanas = urbano[urbano["envolve_moto"] == 1]
 
     supera_referencia = resultado["acuracia"] > resultado["referencia"] + MARGEM_REFERENCIA
     faixa = f"{br(choque_urbano[0], 1)} vezes nas vias urbanas ({_ic_1(choque_urbano)}) e {br(choque_rodovia[0], 1)} nas rodovias ({_ic_1(choque_rodovia)})"
@@ -95,6 +114,7 @@ def calcular_indicadores(df: pd.DataFrame, resultado: dict) -> dict:
         "notificacoes": int(notificacao.sum()),
         "notificacoes_pct": notificacao.mean() * 100,
         "notificacoes_sem_veiculo": df.loc[notificacao, COLUNAS_VEICULO].sum().sum() == 0,
+        "frase_notificacoes_veiculos": frase_notificacoes_veiculos(df.loc[notificacao, COLUNAS_VEICULO].sum().sum() == 0),
         "obitos": int(total_obitos),
         "feridos_graves": int(df["feridos_graves"].sum()),
         "feridos_leves": int(df["feridos_leves"].sum()),
@@ -108,6 +128,9 @@ def calcular_indicadores(df: pd.DataFrame, resultado: dict) -> dict:
         "letalidade": letalidade,
         "letalidade_tipo": taxa.to_dict(),
         "atropelamento_mais_letal": taxa.idxmax() == "ATROPELAMENTO",
+        "frase_atropelamento_gestao": frase_atropelamento_gestao(taxa.idxmax() == "ATROPELAMENTO", taxa["ATROPELAMENTO"]),
+        "frase_choque_urbano": frase_choque_urbano(choque_urbano),
+        "via_motos_urbana": ranking_vias(motos_urbanas, n=1)["logradouro"].iloc[0],
         "choque_colisao": choque_colisao,
         "choque_so_urbano": choque_so_urbano,
         "frase_atropelamento": _frase_atropelamento(atrop_choque, atrop_choque_urbano),
