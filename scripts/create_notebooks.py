@@ -278,6 +278,7 @@ ax1.legend(loc='upper left')
 ax2 = ax1.twinx()
 ax2.plot(resumo_anual['ano'], resumo_anual['obitos'], color='#d9383a', linewidth=3, marker='o')
 ax2.set_ylabel('Óbitos', color='#d9383a')
+ax2.set_ylim(0, resumo_anual['obitos'].max() * 1.3)
 ax2.grid(False)
 
 plt.title('Registros e Óbitos em Bauru/SP')
