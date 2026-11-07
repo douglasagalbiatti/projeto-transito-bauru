@@ -923,6 +923,29 @@ with tab6:
     if resultado_ml['acuracia'] <= resultado_ml['referencia'] + 0.005:
         st.warning("O modelo não supera a referência de sempre prever a classe mais comum.")
 
+    with st.container(border=True):
+        st.markdown("#### ⚠️ Limitações do Modelo")
+        leitura_balanceada = (
+            "mostra que o modelo quase não identifica os casos graves"
+            if resultado_ml['acuracia_balanceada'] < 0.6
+            else "mede o acerto nas duas classes com o mesmo peso"
+        )
+        leitura_auc = (
+            "ordena os sinistros só um pouco melhor que o acaso (0,5)"
+            if resultado_ml['auc'] < 0.7
+            else "ordena os sinistros melhor que o acaso (0,5), sem bastar para classificar casos individuais"
+        )
+        st.markdown(f"""
+- **Não prevê acidentes:** usa o tipo de sinistro e os veículos envolvidos, informações conhecidas só depois que o sinistro aconteceu. Ele descreve associações com desfecho grave ou fatal, não a chance de um acidente ocorrer.
+- **Desempenho:** a acurácia de {br(resultado_ml['acuracia'] * 100, 1)}% deve ser comparada com os {br(resultado_ml['referencia'] * 100, 1)}% de sempre prever "não grave". A acurácia balanceada de {br(resultado_ml['acuracia_balanceada'] * 100, 1)}% (50% equivale ao acaso) {leitura_balanceada}. O ROC-AUC de {br(resultado_ml['auc'], 3)} indica que o modelo {leitura_auc}.
+- **Classe rara:** desfechos graves ou fatais são {br(resultado_ml['prevalencia'] * 100, 1)}% da base comparável. O modelo foi treinado sem peso extra para essa classe, e a estimativa em % do simulador não foi calibrada, então não deve ser lida como probabilidade real.
+- **Validação:** uma única divisão aleatória dos sinistros de 2019 em diante, com {br(resultado_ml['n_teste'])} casos de teste, sem validação por período nem intervalo de confiança. Outro sorteio pode mudar as métricas, e não há garantia de que o padrão se mantenha nos próximos anos.
+- **Variáveis ausentes:** a base não traz velocidade, alcoolemia, uso de capacete ou cinto, idade dos envolvidos nem condição da via. O modelo só sabe se cada tipo de veículo esteve presente, não quantos eram, e a base não liga cada vítima ao seu veículo.
+- **Importância não é causa:** a importância de permutação mostra quanto o modelo usa cada variável, não o sentido do efeito. Variáveis correlacionadas, como hora e turno, dividem a importância entre si.
+- **Simulador:** combinações raras ou ausentes na base, como atropelamento com veículo pesado de madrugada, são extrapolação.
+- **Uso adequado:** apoio à exploração dos dados. Não serve para decidir sobre casos individuais nem substitui a análise de campo.
+""")
+
     col_feat, col_sim = st.columns([1.1, 1.2])
 
     with col_feat:
