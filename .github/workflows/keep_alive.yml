@@ -2,8 +2,10 @@ name: Streamlit Keep-Alive
 
 on:
   schedule:
-    # Execução a cada 12 horas (exemplo: diariamente às 12:00 UTC)
-    - cron: '0 12 * * *'
+    # Execução a cada 6 horas, no minuto 17 (fora do pico do início da hora, quando
+    # o GitHub mais atrasa os agendamentos). O Streamlit Cloud dorme após ~12 h sem
+    # acesso; com 6 h de intervalo, mesmo atrasos de algumas horas não abrem brecha.
+    - cron: '17 */6 * * *'
   workflow_dispatch: # Permite disparo manual via interface do GitHub Actions
 
 jobs:
