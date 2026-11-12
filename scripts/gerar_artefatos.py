@@ -26,6 +26,7 @@ from src.indicadores import calcular_indicadores
 from src.metricas import (
     CORES_SEVERIDADE,
     ORDEM_SEVERIDADE,
+    SEM_INFORMACAO,
     URL_ARTEFATOS,
     base_comparavel,
     br,
@@ -207,10 +208,12 @@ def gerar_relatorio(df, indicadores):
     i = indicadores
     resultado, comparavel, datas = i["modelo"], i["comparavel"], i["datas"]
     teste, por_dia, letalidade, modal = i["teste"], i["por_dia"], i["letalidade"], i["modal"]
-    moto = comparavel.groupby("envolve_moto").agg(
-        letal=("obitos", lambda s: (s > 0).mean() * 100),
-        grave=("severidade_grave_ou_fatal", lambda s: s.mean() * 100),
-    )
+    # Grave ou fatal só entre sinistros com vítimas informadas; letalidade em toda a base comparável
+    informados = comparavel[comparavel["severidade_categoria"] != SEM_INFORMACAO]
+    moto = pd.DataFrame({
+        "letal": comparavel.groupby("envolve_moto")["obitos"].apply(lambda s: (s > 0).mean() * 100),
+        "grave": informados.groupby("envolve_moto")["severidade_grave_ou_fatal"].mean() * 100,
+    })
     horas = df["hora_num"].value_counts().head(3).index.astype(int)
     madrugada = comparavel.groupby("is_fim_de_semana")["turno_ajustado"].apply(lambda s: (s == "MADRUGADA").mean() * 100)
     ultimo_completo = datas.max().year - 1 if i["ano_parcial"] else datas.max().year
@@ -307,7 +310,7 @@ A madrugada responde por {br(madrugada[1], 1)}% dos sinistros de fim de semana e
 
 Entre os {br(len(modal))} registros com veículo ou pedestre informado, há motocicleta em {br(modal['envolve_moto'].mean() * 100, 1)}% e automóvel em {br(modal['envolve_auto'].mean() * 100, 1)}%. Um mesmo registro pode ter os dois.
 
-Na base comparável, sinistros com moto têm {br(moto.loc[1, 'grave'], 1)}% de desfecho grave ou fatal, contra {br(moto.loc[0, 'grave'], 1)}% dos demais, e {br(moto.loc[1, 'letal'], 1)}% de letalidade, contra {br(moto.loc[0, 'letal'], 1)}%. A base não liga cada vítima ao seu veículo nem traz frota ou quilômetros rodados, então não mede o risco individual do motociclista.
+Entre os sinistros da base comparável com vítimas informadas, os com moto têm {br(moto.loc[1, 'grave'], 1)}% de desfecho grave ou fatal, contra {br(moto.loc[0, 'grave'], 1)}% dos demais. Em toda a base comparável, têm {br(moto.loc[1, 'letal'], 1)}% de letalidade, contra {br(moto.loc[0, 'letal'], 1)}%. A base não liga cada vítima ao seu veículo nem traz frota ou quilômetros rodados, então não mede o risco individual do motociclista.
 
 ## 6. Onde ocorrem
 

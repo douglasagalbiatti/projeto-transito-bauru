@@ -668,8 +668,11 @@ with tab3:
 
     moto_comp = df_comparavel[df_comparavel['envolve_moto'] == 1]
     sem_moto_comp = df_comparavel[df_comparavel['envolve_moto'] == 0]
-    taxa_grave_moto = moto_comp['severidade_grave_ou_fatal'].mean() * 100 if len(moto_comp) > 0 else 0
-    taxa_grave_sem_moto = sem_moto_comp['severidade_grave_ou_fatal'].mean() * 100 if len(sem_moto_comp) > 0 else 0
+    # Grave ou fatal só entre sinistros com vítimas informadas: sem dados, não se sabe se o desfecho foi grave
+    moto_inf = moto_comp[moto_comp['severidade_categoria'] != SEM_INFORMACAO]
+    sem_moto_inf = sem_moto_comp[sem_moto_comp['severidade_categoria'] != SEM_INFORMACAO]
+    taxa_grave_moto = moto_inf['severidade_grave_ou_fatal'].mean() * 100 if len(moto_inf) > 0 else 0
+    taxa_grave_sem_moto = sem_moto_inf['severidade_grave_ou_fatal'].mean() * 100 if len(sem_moto_inf) > 0 else 0
     letal_moto = (moto_comp['obitos'] > 0).mean() * 100 if len(moto_comp) > 0 else 0
     letal_sem_moto = (sem_moto_comp['obitos'] > 0).mean() * 100 if len(sem_moto_comp) > 0 else 0
 
@@ -679,6 +682,10 @@ with tab3:
         st.metric("Grave ou Fatal COM Moto", f"{br(taxa_grave_moto, 1)}%", f"Letalidade: {br(letal_moto, 1)}%", delta_color="off")
     with col_c3:
         st.metric("Grave ou Fatal SEM Moto", f"{br(taxa_grave_sem_moto, 1)}%", f"Letalidade: {br(letal_sem_moto, 1)}%", delta_color="off")
+    st.caption(
+        "Grave ou fatal: proporção entre os sinistros com vítimas informadas, pois sem esses dados não se sabe se o desfecho foi grave. "
+        "Letalidade: proporção de sinistros com óbito em toda a base comparável."
+    )
 
 # ------------------------------------------------------------------------------
 # TAB 4: PADRÕES TEMPORAIS & TESTE ESTATÍSTICO

@@ -53,7 +53,7 @@ O choque tem 4,0 vezes a letalidade da colisão (IC95% 3,0 a 5,4), mas essa dife
 
 Entre os 10.780 registros com veículo ou pedestre informado, há motocicleta em 64,3% e automóvel em 72,4%. Um mesmo registro pode ter os dois.
 
-Na base comparável, sinistros com moto têm 13,3% de desfecho grave ou fatal, contra 9,9% dos demais, e 2,0% de letalidade, contra 4,0%. A base não liga cada vítima ao seu veículo nem traz frota ou quilômetros rodados, então não mede o risco individual do motociclista.
+Entre os sinistros da base comparável com vítimas informadas, os com moto têm 13,3% de desfecho grave ou fatal, contra 12,3% dos demais. Em toda a base comparável, têm 2,0% de letalidade, contra 4,0%. A base não liga cada vítima ao seu veículo nem traz frota ou quilômetros rodados, então não mede o risco individual do motociclista.
 
 ## 6. Onde ocorrem
 
