@@ -91,14 +91,22 @@ Os rankings excluem notificações e são contagens brutas, sem fluxo de veícul
 
 ## 7. Modelo exploratório
 
-Random Forest com 8.424 sinistros de treino e 2.808 de teste, para estimar se o desfecho foi grave ou fatal (11,8% dos casos).
+Regressão logística para estimar se o desfecho foi grave ou fatal (11,8% dos casos). As métricas abaixo vêm de 8.424 sinistros de treino e 2.808 de teste; as razões de chance, do ajuste nos 11.232 sinistros da base comparável.
 
-* **Acurácia:** 88,4%, contra 88,2% de sempre prever a classe mais comum. O modelo não supera a referência de sempre prever a classe mais comum.
-* **Acurácia balanceada:** 51,0%
-* **ROC-AUC:** 0,683
-* **Variáveis mais usadas (permutação):** via urbana, motocicleta presente, pedestre presente, automóvel presente.
+* **Acurácia:** 88,2%, contra 88,2% de sempre prever a classe mais comum. O modelo não supera a referência de sempre prever a classe mais comum.
+* **Acurácia balanceada (limiar de 50%):** 50,7%
+* **ROC-AUC:** 0,695 (IC 95%: 0,667 a 0,723)
+* **PR-AUC:** 0,242, contra 0,118 do acaso
+* **Com limiar no risco médio:** sensibilidade de 53,9% e precisão de 21,7%
+* **Validação cruzada (15 rodadas):** ROC-AUC de 0,693 ± 0,010
+* **Validação por ano:** treinado só com anos anteriores, ROC-AUC de 0,681 em 2022, 0,716 em 2023, 0,686 em 2024, 0,660 em 2025, 0,694 em 2026 (2026 até 09/2026).
 
-O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. A importância não indica sentido nem causa.
+Razões de chance com intervalo de 95%, mantendo as demais variáveis iguais (referência: via urbana, colisão e tarde):
+
+* **Aumentam a chance de desfecho grave ou fatal:** pedestre envolvido: 3,45 (IC 95%: 1,65 a 7,21); rodovia: 3,04 (IC 95%: 2,63 a 3,52); bicicleta envolvida: 2,35 (IC 95%: 1,64 a 3,36); motocicleta envolvida: 2,26 (IC 95%: 1,93 a 2,64); madrugada (0h–6h): 2,13 (IC 95%: 1,72 a 2,64); caminhão ou ônibus envolvido: 1,91 (IC 95%: 1,51 a 2,41); tipo: choque: 1,44 (IC 95%: 1,18 a 1,76); noite (18h–24h): 1,30 (IC 95%: 1,12 a 1,51); fim de semana: 1,27 (IC 95%: 1,12 a 1,46).
+* **Reduzem a chance:** manhã (6h–12h): 0,82 (IC 95%: 0,69 a 0,96).
+
+O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. As razões de chance são associações nesta base, não causas, e fatores ausentes como velocidade e alcoolemia podem explicar parte delas.
 
 ## 8. Hipóteses para a gestão pública
 
