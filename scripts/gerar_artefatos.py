@@ -329,7 +329,7 @@ Os rankings excluem notificações e são contagens brutas, sem fluxo de veícul
 
 ## 7. Modelo exploratório
 
-Regressão logística para estimar se o desfecho foi grave ou fatal ({br(resultado['prevalencia'] * 100, 1)}% dos casos). As métricas abaixo vêm de {br(resultado['n_treino'])} sinistros de treino e {br(resultado['n_teste'])} de teste; as razões de chance, do ajuste nos {br(resultado['n_total'])} sinistros da base comparável.
+Regressão logística para estimar se o desfecho foi grave ou fatal ({br(resultado['prevalencia'] * 100, 1)}% dos casos). As métricas abaixo vêm de {br(resultado['n_treino'])} sinistros de treino e {br(resultado['n_teste'])} de teste; as razões de chance, do ajuste nos {br(resultado['n_total'])} sinistros da base comparável com vítimas informadas. Os sinistros sem informação de vítimas ficam de fora, porque não se sabe se foram graves.
 
 * **Acurácia:** {br(resultado['acuracia'] * 100, 1)}%, contra {br(resultado['referencia'] * 100, 1)}% de sempre prever a classe mais comum. {aviso_modelo}
 * **Acurácia balanceada (limiar de 50%):** {br(resultado['acuracia_balanceada'] * 100, 1)}%

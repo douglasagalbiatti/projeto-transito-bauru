@@ -903,7 +903,7 @@ with tab6:
     st.markdown(f"""
     <div class="insight-box">
         <strong>🤖 O que este modelo é:</strong>
-        <br>• Treinado na base comparável (sem os filtros) para descrever associações com desfecho grave ou fatal, presente em {br(resultado_ml['prevalencia'] * 100, 1)}% dos sinistros.
+        <br>• Treinado na base comparável (sem os filtros), só com sinistros de vítimas informadas, para descrever associações com desfecho grave ou fatal, presente em {br(resultado_ml['prevalencia'] * 100, 1)}% deles.
         <br>• Usa dados conhecidos só depois do sinistro, portanto não prevê acidentes futuros.
     </div>
     """, unsafe_allow_html=True)
@@ -1011,7 +1011,7 @@ with tab6:
         st.markdown(f"""
 - **Não prevê acidentes:** usa o tipo de sinistro e os veículos envolvidos, informações conhecidas só depois que o sinistro aconteceu. Ele descreve associações com desfecho grave ou fatal, não a chance de um acidente ocorrer.
 - **Desempenho:** o ROC-AUC de {br(resultado_ml['auc'], 3)} indica que o modelo {leitura_auc}. Com o limiar padrão de 50%, a acurácia de {br(resultado_ml['acuracia'] * 100, 1)}% fica perto dos {br(resultado_ml['referencia'] * 100, 1)}% de sempre prever "não grave". Com o limiar no risco médio, o modelo marca {br(teste_ml['sensibilidade'] * 100, 0)}% dos casos graves, mas só {br(teste_ml['precisao'] * 100, 0)}% dos marcados são de fato graves.
-- **Classe rara:** desfechos graves ou fatais são {br(prevalencia_pct, 1)}% da base comparável. O erro das porcentagens do modelo (Brier) é só {br(teste_ml['brier_skill'] * 100, 0)}% menor que o de prever sempre a média, e a estimativa do simulador não foi calibrada, então não deve ser lida como probabilidade real.
+- **Classe rara:** desfechos graves ou fatais são {br(prevalencia_pct, 1)}% dos sinistros do modelo. Os sinistros sem informação de vítimas ficam de fora, porque não se sabe se foram graves. O erro das porcentagens do modelo (Brier) é só {br(teste_ml['brier_skill'] * 100, 0)}% menor que o de prever sempre a média, e a estimativa do simulador não foi calibrada, então não deve ser lida como probabilidade real.
 - **Validação:** as métricas variam pouco entre os sorteios da validação cruzada (ROC-AUC {br(cv_ml.loc['auc', 'media'], 3)} ± {br(cv_ml.loc['auc', 'desvio'], 3)}). {frase_temporal}
 - **Variáveis ausentes:** a base não traz velocidade, alcoolemia, uso de capacete ou cinto, idade dos envolvidos nem condição da via. O modelo só sabe se cada tipo de veículo esteve presente, não quantos eram, e a base não liga cada vítima ao seu veículo.
 - **Razão de chance não é causa:** cada razão de chance é uma associação ajustada pelas demais variáveis desta base. Fatores ausentes, como velocidade e alcoolemia, podem explicar parte dela. Pedestre envolvido e atropelamento quase sempre aparecem juntos, por isso os intervalos dessas duas variáveis são largos e devem ser lidos em conjunto.
@@ -1087,7 +1087,7 @@ with tab6:
                 ),
                 width="stretch", hide_index=True,
             )
-            st.caption(f"Modelo ajustado nos {br(resultado_ml['n_total'])} sinistros da base comparável.")
+            st.caption(f"Modelo ajustado nos {br(resultado_ml['n_total'])} sinistros da base comparável com vítimas informadas.")
 
     with col_sim:
         st.markdown("#### ⚡ Simulador Exploratório de Gravidade")
@@ -1137,7 +1137,7 @@ with tab6:
         st.metric(
             "Estimativa do modelo de desfecho grave ou fatal",
             f"{br(prob_grave, 1)}%",
-            f"Média da base comparável: {br(resultado_ml['prevalencia'] * 100, 1)}%",
+            f"Média da base do modelo: {br(resultado_ml['prevalencia'] * 100, 1)}%",
             delta_color="off"
         )
         st.progress(min(prob_grave / 100.0, 1.0))

@@ -91,6 +91,7 @@ class TestModelo(unittest.TestCase):
             "tipo_registro": ["SINISTRO NAO FATAL"] * n + ["SINISTRO FATAL"] * 10 + ["NOTIFICACAO"] * 50,
             "hora_num": [i % 24 for i in range(n + 60)],
             "severidade_grave_ou_fatal": [int(i % 4 == 0) for i in range(n)] + [1] * 10 + [0] * 50,
+            "severidade_categoria": ["GRAVE" if i % 4 == 0 else "LEVE" for i in range(n)] + ["FATAL"] * 10 + ["SEM INFORMACAO"] * 50,
             "tipo_via_simplificado": ["VIA URBANA", "RODOVIA / ESTRADA"] * ((n + 60) // 2),
             "tipo_sinistro_simplificado": ["COLISAO", "CHOQUE"] * ((n + 60) // 2),
             "turno_ajustado": ["MANHA", "NOITE"] * ((n + 60) // 2),
@@ -100,6 +101,11 @@ class TestModelo(unittest.TestCase):
         self.assertEqual(resultado["n_treino"] + resultado["n_teste"], n)
         self.assertAlmostEqual(resultado["prevalencia"], 0.25)
         self.assertTrue(resultado["temporal"].empty)
+
+        # Sem informação de vítimas não entra como "não grave"
+        df.loc[:9, "severidade_categoria"] = "SEM INFORMACAO"
+        df.loc[:9, "severidade_grave_ou_fatal"] = 0
+        self.assertEqual(modelo.treinar_modelo(df)["n_total"], n - 10)
         self.assertEqual(int(resultado["validacao_cruzada"]["rodadas"].iloc[0]), modelo.DOBRAS_CV * modelo.REPETICOES_CV)
         self.assertLessEqual(resultado["auc_ic"][0], resultado["auc"])
         self.assertGreaterEqual(resultado["auc_ic"][1], resultado["auc"])

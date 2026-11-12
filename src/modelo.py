@@ -15,7 +15,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 
-from src.metricas import base_comparavel
+from src.metricas import SEM_INFORMACAO, base_comparavel
 
 FEATURES_NUMERICAS = [
     "envolve_moto", "envolve_auto", "envolve_pedestre", "envolve_bicicleta", "envolve_pesado",
@@ -196,16 +196,28 @@ def validacao_temporal(base: pd.DataFrame, X: pd.DataFrame, y: pd.Series) -> pd.
     return pd.DataFrame(linhas)
 
 
+def base_do_modelo(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Base comparável com hora e desfecho conhecidos.
+
+    Sinistros sem informação de vítimas ficam de fora: sem dados, não se sabe se o desfecho foi
+    grave, e contá-los como "não grave" subestimaria os casos graves.
+    """
+    base = base_comparavel(df)
+    base = base[base["hora_num"].notnull() & (base["severidade_categoria"] != SEM_INFORMACAO)]
+    return base.reset_index(drop=True)
+
+
 def treinar_modelo(df: pd.DataFrame) -> dict:
     """
     Ajusta e avalia a regressão logística na base comparável.
 
+    O desfecho é ter ferido grave ou óbito, entre os sinistros com vítimas informadas.
     As métricas de teste vêm de uma divisão aleatória 75/25. O modelo devolvido, usado nas razões
     de chance e no simulador, é ajustado na base comparável inteira. A validação cruzada repetida e
     a validação por ano medem a estabilidade das métricas e se o padrão se mantém nos anos seguintes.
     """
-    base = base_comparavel(df)
-    base = base[base["hora_num"].notnull()].reset_index(drop=True)
+    base = base_do_modelo(df)
     refs = referencias(base)
     X, y = montar_features(base, refs), base["severidade_grave_ou_fatal"]
     X_treino, X_teste, y_treino, y_teste = train_test_split(X, y, test_size=0.25, random_state=SEMENTE, stratify=y)
