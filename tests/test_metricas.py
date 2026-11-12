@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 
 from scripts import atualizar_dados_infosiga as etl
@@ -98,6 +99,60 @@ class TestModelo(unittest.TestCase):
         resultado = modelo.treinar_modelo(df)
         self.assertEqual(resultado["n_treino"] + resultado["n_teste"], n)
         self.assertAlmostEqual(resultado["prevalencia"], 0.25)
+        self.assertTrue(resultado["temporal"].empty)
+        self.assertEqual(int(resultado["validacao_cruzada"]["rodadas"].iloc[0]), modelo.DOBRAS_CV * modelo.REPETICOES_CV)
+        self.assertLessEqual(resultado["auc_ic"][0], resultado["auc"])
+        self.assertGreaterEqual(resultado["auc_ic"][1], resultado["auc"])
+        caso = df.head(1).copy()
+        caso["turno_ajustado"] = "MADRUGADA"  # categoria que o modelo não viu
+        prob = modelo.prever_probabilidade(resultado, caso)
+        self.assertTrue(0 <= prob[0] <= 1)
+
+    def test_validacao_temporal_treina_so_com_anos_anteriores(self):
+        anos = list(range(2019, 2025))
+        n_ano = 80
+        n = n_ano * len(anos)
+        base = pd.DataFrame({
+            "ano": [a for a in anos for _ in range(n_ano)],
+            "severidade_grave_ou_fatal": [int(i % 5 == 0) for i in range(n)],
+        })
+        X = pd.DataFrame({"x": [i % 7 for i in range(n)]})
+        temporal = modelo.validacao_temporal(base, X, base["severidade_grave_ou_fatal"])
+        self.assertEqual(temporal["ano"].tolist(), anos[modelo.ANOS_MINIMOS_TREINO:])
+        self.assertEqual(temporal["anos_treino"].iloc[0], "2019–2021")
+        self.assertTrue((temporal["n_teste"] == n_ano).all())
+
+    def test_razao_de_chance_bate_com_a_tabela_2x2(self):
+        # Exposto: 30 graves e 70 não graves; não exposto: 10 graves e 90 não graves
+        x = [1] * 100 + [0] * 100
+        y = [1] * 30 + [0] * 70 + [1] * 10 + [0] * 90
+        X = pd.DataFrame({"exposto": x}, dtype=float)
+        clf = modelo.novo_classificador().fit(X, y)
+        rc = modelo.razoes_de_chance(clf, X).loc["exposto"]
+        esperado = (30 * 90) / (70 * 10)
+        erro_padrao = np.sqrt(1 / 30 + 1 / 70 + 1 / 10 + 1 / 90)
+        self.assertAlmostEqual(rc["razao_chance"], esperado, places=3)
+        self.assertAlmostEqual(rc["ic_inf"], esperado * np.exp(-1.96 * erro_padrao), places=3)
+        self.assertAlmostEqual(rc["ic_sup"], esperado * np.exp(1.96 * erro_padrao), places=3)
+        self.assertEqual(rc["n_casos"], 100)
+
+    def test_referencia_ausente_usa_a_categoria_mais_comum(self):
+        df = pd.DataFrame({
+            "tipo_via_simplificado": ["VIA URBANA", "RODOVIA / ESTRADA", "VIA URBANA"],
+            "tipo_sinistro_simplificado": ["CHOQUE", "CHOQUE", "ATROPELAMENTO"],
+            "turno_ajustado": ["NOITE", "MANHA", "NOITE"],
+        })
+        refs = modelo.referencias(df)
+        self.assertEqual(refs["tipo_via_simplificado"], "VIA URBANA")
+        self.assertEqual(refs["tipo_sinistro_simplificado"], "CHOQUE")
+        self.assertEqual(refs["turno_ajustado"], "NOITE")
+
+    def test_metricas_classe_rara_usam_limiar_da_prevalencia(self):
+        m = modelo.metricas_classe_rara([0, 0, 0, 1], [0.1, 0.2, 0.3, 0.4], prevalencia_treino=0.25)
+        self.assertAlmostEqual(m["sensibilidade"], 1.0)
+        self.assertAlmostEqual(m["precisao"], 1 / 2)
+        self.assertAlmostEqual(m["auc"], 1.0)
+        self.assertAlmostEqual(m["brier_ref"], 0.1875)
 
 
 def _bruto(**extras):

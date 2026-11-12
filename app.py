@@ -28,7 +28,7 @@ from src.metricas import (
     tabela_letalidade,
 )
 from src.indicadores import calcular_indicadores
-from src.modelo import treinar_modelo
+from src.modelo import DOBRAS_CV, NOMES_REFERENCIA, NOMES_VARIAVEIS_MODELO, REPETICOES_CV, prever_probabilidade, treinar_modelo
 
 # ==============================================================================
 # CONFIGURAÇÃO DA PÁGINA STREAMLIT
@@ -896,11 +896,9 @@ with tab5:
 # TAB 6: MODELO EXPLORATÓRIO (MACHINE LEARNING)
 # ------------------------------------------------------------------------------
 with tab6:
-    st.markdown("### 6. Modelo Exploratório de Gravidade (Random Forest)")
+    st.markdown("### 6. Modelo Exploratório de Gravidade (Regressão Logística)")
 
     resultado_ml = get_ml_model()
-    rf_model = resultado_ml['modelo']
-    feat_cols = resultado_ml['features']
 
     st.markdown(f"""
     <div class="insight-box">
@@ -910,38 +908,114 @@ with tab6:
     </div>
     """, unsafe_allow_html=True)
 
+    teste_ml = resultado_ml['teste']
+    prevalencia_pct = resultado_ml['prevalencia'] * 100
+    cv_ml = resultado_ml['validacao_cruzada']
+    temporal_ml = resultado_ml['temporal']
+
     col_ml_metrics1, col_ml_metrics2, col_ml_metrics3, col_ml_metrics4 = st.columns(4)
     with col_ml_metrics1:
-        st.metric("Acurácia no teste", f"{br(resultado_ml['acuracia'] * 100, 1)}%")
+        st.metric(
+            "ROC-AUC no teste", br(resultado_ml['auc'], 3),
+            f"IC 95%: {br(resultado_ml['auc_ic'][0], 3)} a {br(resultado_ml['auc_ic'][1], 3)}", delta_color="off", delta_arrow="off",
+            help="Chance de o modelo dar risco maior a um sinistro grave do que a um não grave. 0,5 equivale ao acaso.",
+        )
     with col_ml_metrics2:
-        st.metric("Sempre prever a classe mais comum", f"{br(resultado_ml['referencia'] * 100, 1)}%")
+        st.metric(
+            "PR-AUC no teste", br(resultado_ml['pr_auc'], 3), f"acaso: {br(resultado_ml['prevalencia'], 3)}", delta_color="off", delta_arrow="off",
+            help="Precisão média ao longo dos limiares. Sem modelo, ela fica na proporção de casos graves.",
+        )
     with col_ml_metrics3:
-        st.metric("Acurácia balanceada", f"{br(resultado_ml['acuracia_balanceada'] * 100, 1)}%")
+        st.metric(
+            "Sensibilidade", f"{br(teste_ml['sensibilidade'] * 100, 1)}%", "limiar: risco médio", delta_color="off", delta_arrow="off",
+            help="Entre os sinistros graves ou fatais do teste, quantos o modelo marcou com risco acima da média do treino.",
+        )
     with col_ml_metrics4:
-        st.metric("ROC-AUC", br(resultado_ml['auc'], 3), f"{br(resultado_ml['n_teste'])} sinistros de teste", delta_color="off")
+        st.metric(
+            "Precisão", f"{br(teste_ml['precisao'] * 100, 1)}%", f"acaso: {br(prevalencia_pct, 1)}%", delta_color="off", delta_arrow="off",
+            help="Entre os sinistros marcados com risco acima da média, quantos foram de fato graves ou fatais.",
+        )
+    st.caption(
+        f"Divisão aleatória com {br(resultado_ml['n_teste'])} sinistros de teste. "
+        "Sensibilidade e precisão usam como limiar o risco médio do treino, em vez de 50%, que o modelo quase nunca atinge."
+    )
 
-    if resultado_ml['acuracia'] <= resultado_ml['referencia'] + 0.005:
-        st.warning("O modelo não supera a referência de sempre prever a classe mais comum.")
+    with st.container(border=True):
+        st.markdown("#### 🧪 Validação")
+        col_val1, col_val2 = st.columns([1, 1.6])
+        nomes_metricas = {
+            'auc': 'ROC-AUC',
+            'pr_auc': 'PR-AUC',
+            'brier_skill': 'Ganho no Brier',
+            'sensibilidade': 'Sensibilidade',
+            'precisao': 'Precisão',
+            'acuracia_balanceada': 'Acurácia balanceada',
+        }
+        with col_val1:
+            st.markdown(f"**Validação cruzada** ({DOBRAS_CV} partes × {REPETICOES_CV} repetições)")
+            tabela_cv = pd.DataFrame({
+                'Métrica': [nomes_metricas[m] for m in cv_ml.index],
+                'Média ± desvio': [f"{br(l.media, 3)} ± {br(l.desvio, 3)}" for l in cv_ml.itertuples()],
+            })
+            st.dataframe(tabela_cv, width="stretch", hide_index=True)
+            st.caption(
+                f"{br(int(cv_ml['rodadas'].iloc[0]))} treinos com sorteios diferentes. "
+                "Um desvio pequeno indica que as métricas não dependem do sorteio. "
+                "Ganho no Brier: quanto o erro das porcentagens é menor que o de prever sempre a média (0 = nenhum ganho)."
+            )
+        with col_val2:
+            st.markdown("**Validação por ano** (treina com os anos anteriores e testa no ano seguinte)")
+            if temporal_ml.empty:
+                st.info("Não há anos suficientes na base para a validação por ano.")
+            else:
+                fim_dados = pd.to_datetime(df_completo['data_sinistro_dt']).max()
+                ano_incompleto = fim_dados.year if (fim_dados.month, fim_dados.day) != (12, 31) else None
+                tabela_temporal = pd.DataFrame({
+                    'Ano de teste': [f"{a} (até {fim_dados:%m/%Y})" if a == ano_incompleto else str(a) for a in temporal_ml['ano']],
+                    'Treino': temporal_ml['anos_treino'],
+                    'Sinistros': temporal_ml['n_teste'],
+                    'Graves (%)': temporal_ml['prevalencia'] * 100,
+                    'ROC-AUC': temporal_ml['auc'],
+                    'PR-AUC': temporal_ml['pr_auc'],
+                    'Sensibilidade (%)': temporal_ml['sensibilidade'] * 100,
+                    'Precisão (%)': temporal_ml['precisao'] * 100,
+                })
+                st.dataframe(
+                    formatar_tabela(tabela_temporal, casas={'Graves (%)': 1, 'ROC-AUC': 3, 'PR-AUC': 3, 'Sensibilidade (%)': 1, 'Precisão (%)': 1}),
+                    width="stretch", hide_index=True,
+                )
+                st.caption("Mede se o padrão aprendido no passado vale para os anos seguintes, como aconteceria no uso real.")
 
     with st.container(border=True):
         st.markdown("#### ⚠️ Limitações do Modelo")
-        leitura_balanceada = (
-            "mostra que o modelo quase não identifica os casos graves"
-            if resultado_ml['acuracia_balanceada'] < 0.6
-            else "mede o acerto nas duas classes com o mesmo peso"
+        st.info(
+            "**As limitações vêm dos dados, não do modelo.** A regressão logística aproveita as informações "
+            "que a base do Infosiga oferece, mas faltam nela fatores decisivos para a gravidade de um sinistro, "
+            "como velocidade, alcoolemia, uso de capacete ou cinto e idade dos envolvidos. Sem esses dados, "
+            "nenhum modelo consegue estimar a gravidade com mais precisão.",
+            icon="ℹ️",
         )
         leitura_auc = (
             "ordena os sinistros só um pouco melhor que o acaso (0,5)"
             if resultado_ml['auc'] < 0.7
             else "ordena os sinistros melhor que o acaso (0,5), sem bastar para classificar casos individuais"
         )
+        if temporal_ml.empty:
+            frase_temporal = "Não há anos suficientes para testar o modelo em anos posteriores ao treino."
+        else:
+            frase_temporal = (
+                f"Treinado só com anos anteriores, o modelo teve ROC-AUC entre {br(temporal_ml['auc'].min(), 3)} e "
+                f"{br(temporal_ml['auc'].max(), 3)} nos testes de {temporal_ml['ano'].min()} a {temporal_ml['ano'].max()}: "
+                "o padrão se manteve até aqui, o que não garante que continue."
+            )
         st.markdown(f"""
 - **Não prevê acidentes:** usa o tipo de sinistro e os veículos envolvidos, informações conhecidas só depois que o sinistro aconteceu. Ele descreve associações com desfecho grave ou fatal, não a chance de um acidente ocorrer.
-- **Desempenho:** a acurácia de {br(resultado_ml['acuracia'] * 100, 1)}% deve ser comparada com os {br(resultado_ml['referencia'] * 100, 1)}% de sempre prever "não grave". A acurácia balanceada de {br(resultado_ml['acuracia_balanceada'] * 100, 1)}% (50% equivale ao acaso) {leitura_balanceada}. O ROC-AUC de {br(resultado_ml['auc'], 3)} indica que o modelo {leitura_auc}.
-- **Classe rara:** desfechos graves ou fatais são {br(resultado_ml['prevalencia'] * 100, 1)}% da base comparável. O modelo foi treinado sem peso extra para essa classe, e a estimativa em % do simulador não foi calibrada, então não deve ser lida como probabilidade real.
-- **Validação:** uma única divisão aleatória dos sinistros de 2019 em diante, com {br(resultado_ml['n_teste'])} casos de teste, sem validação por período nem intervalo de confiança. Outro sorteio pode mudar as métricas, e não há garantia de que o padrão se mantenha nos próximos anos.
+- **Desempenho:** o ROC-AUC de {br(resultado_ml['auc'], 3)} indica que o modelo {leitura_auc}. Com o limiar padrão de 50%, a acurácia de {br(resultado_ml['acuracia'] * 100, 1)}% fica perto dos {br(resultado_ml['referencia'] * 100, 1)}% de sempre prever "não grave". Com o limiar no risco médio, o modelo marca {br(teste_ml['sensibilidade'] * 100, 0)}% dos casos graves, mas só {br(teste_ml['precisao'] * 100, 0)}% dos marcados são de fato graves.
+- **Classe rara:** desfechos graves ou fatais são {br(prevalencia_pct, 1)}% da base comparável. O erro das porcentagens do modelo (Brier) é só {br(teste_ml['brier_skill'] * 100, 0)}% menor que o de prever sempre a média, e a estimativa do simulador não foi calibrada, então não deve ser lida como probabilidade real.
+- **Validação:** as métricas variam pouco entre os sorteios da validação cruzada (ROC-AUC {br(cv_ml.loc['auc', 'media'], 3)} ± {br(cv_ml.loc['auc', 'desvio'], 3)}). {frase_temporal}
 - **Variáveis ausentes:** a base não traz velocidade, alcoolemia, uso de capacete ou cinto, idade dos envolvidos nem condição da via. O modelo só sabe se cada tipo de veículo esteve presente, não quantos eram, e a base não liga cada vítima ao seu veículo.
-- **Importância não é causa:** a importância de permutação mostra quanto o modelo usa cada variável, não o sentido do efeito. Variáveis correlacionadas, como hora e turno, dividem a importância entre si.
+- **Razão de chance não é causa:** cada razão de chance é uma associação ajustada pelas demais variáveis desta base. Fatores ausentes, como velocidade e alcoolemia, podem explicar parte dela. Pedestre envolvido e atropelamento quase sempre aparecem juntos, por isso os intervalos dessas duas variáveis são largos e devem ser lidos em conjunto.
+- **Efeitos somados, sem interação:** o modelo supõe que cada fator multiplica a chance da mesma forma em qualquer situação, por exemplo que a moto pesa igual em rodovia e em via urbana. Combinações específicas podem fugir desse padrão.
 - **Simulador:** combinações raras ou ausentes na base, como atropelamento com veículo pesado de madrugada, são extrapolação.
 - **Uso adequado:** apoio à exploração dos dados. Não serve para decidir sobre casos individuais nem substitui a análise de campo.
 """)
@@ -949,51 +1023,77 @@ with tab6:
     col_feat, col_sim = st.columns([1.1, 1.2])
 
     with col_feat:
-        st.markdown("#### 🏆 Top 10 Variáveis por Importância de Permutação")
-        top_10 = resultado_ml['importancias'].head(10).reset_index()
-        top_10.columns = ['Variável', 'Importância']
+        st.markdown("#### 📊 Razões de Chance (IC 95%)")
+        rc = resultado_ml['razoes_chance'].reset_index(names='Variável')
+        rc['Nome'] = rc['Variável'].map(lambda x: NOMES_VARIAVEIS_MODELO.get(x, x))
+        rc['Leitura'] = [
+            'Aumenta a chance' if l.ic_inf > 1 else 'Reduz a chance' if l.ic_sup < 1 else 'Inconclusivo (IC inclui 1)'
+            for l in rc.itertuples()
+        ]
+        rc = rc.sort_values('razao_chance')
+        cores_leitura = {'Aumenta a chance': '#ef4444', 'Reduz a chance': '#3b82f6', 'Inconclusivo (IC inclui 1)': '#94a3b8'}
 
-        traducao_feats = {
-            'hora_num': 'Hora do Sinistro (0-23h)',
-            'envolve_moto': 'Presença de Motocicleta',
-            'via_VIA URBANA': 'Via Urbana',
-            'envolve_auto': 'Presença de Automóvel',
-            'tipo_COLISAO': 'Tipo: Colisão',
-            'tipo_OUTROS': 'Tipo: Outros',
-            'tipo_OUTROS / NAO INFORMADO': 'Tipo: Não Informado',
-            'is_fim_de_semana': 'Fim de Semana (Sáb/Dom)',
-            'envolve_pedestre': 'Presença de Pedestre',
-            'tipo_CHOQUE': 'Tipo: Choque',
-            'turno_MANHA': 'Turno: Manhã (6h-12h)',
-            'turno_TARDE': 'Turno: Tarde (12h-18h)',
-            'turno_NOITE': 'Turno: Noite (18h-24h)',
-            'envolve_pesado': 'Veículo Pesado (Ônibus/Caminhão)',
-            'envolve_bicicleta': 'Presença de Bicicleta'
-        }
-        top_10['Nome Legível'] = top_10['Variável'].map(lambda x: traducao_feats.get(x, x))
-        top_10 = top_10.sort_values(by='Importância', ascending=True)
-
-        fig_feat = px.bar(
-            top_10,
-            x='Importância',
-            y='Nome Legível',
-            orientation='h',
-            text=top_10['Importância'].apply(lambda v: br(v, 3)),
-            title="Piora na log-loss ao embaralhar a variável",
-            color='Importância',
-            color_continuous_scale='Viridis',
-            template='plotly_dark'
+        fig_rc = go.Figure()
+        for leitura, cor in cores_leitura.items():
+            parte = rc[rc['Leitura'] == leitura]
+            if parte.empty:
+                continue
+            fig_rc.add_trace(go.Scatter(
+                x=parte['razao_chance'],
+                y=parte['Nome'],
+                mode='markers',
+                name=leitura,
+                marker=dict(color=cor, size=10),
+                error_x=dict(
+                    type='data', symmetric=False,
+                    array=parte['ic_sup'] - parte['razao_chance'],
+                    arrayminus=parte['razao_chance'] - parte['ic_inf'],
+                    color=cor, thickness=1.5,
+                ),
+                customdata=parte[['ic_inf', 'ic_sup', 'n_casos']],
+                hovertemplate="<b>%{y}</b><br>Razão de chance: %{x:.2f}<br>IC 95%: %{customdata[0]:.2f} a %{customdata[1]:.2f}<br>Casos com a característica: %{customdata[2]:,}<extra></extra>",
+            ))
+        fig_rc.add_vline(x=1, line_dash='dash', line_color='rgba(255,255,255,0.5)')
+        fig_rc.update_layout(
+            template='plotly_dark', height=480, margin=dict(l=20, r=20, t=30, b=30),
+            xaxis=dict(
+                type='log', title='Razão de chance (escala logarítmica)',
+                tickvals=[0.25, 0.5, 1, 2, 4, 8, 16], ticktext=['0,25', '0,5', '1', '2', '4', '8', '16'],
+            ),
+            yaxis=dict(title='', categoryorder='array', categoryarray=rc['Nome'].tolist()),
+            legend=dict(orientation='h', yanchor='bottom', y=1.0, x=0),
         )
-        fig_feat.update_traces(textposition='outside')
-        fig_feat.update_layout(height=420, margin=dict(l=20, r=20, t=50, b=30), coloraxis_showscale=False, yaxis=dict(title=""))
-        mostrar_grafico(fig_feat)
-        st.caption("A importância indica quanto o modelo usa a variável, não o sentido do efeito nem uma relação causal.")
+        mostrar_grafico(fig_rc)
+        refs_ml = resultado_ml['referencias']
+        st.caption(
+            "Cada razão de chance compara sinistros com e sem a característica, mantendo as demais iguais. "
+            f"Categorias de referência: {NOMES_REFERENCIA[refs_ml['tipo_via_simplificado']]}, "
+            f"{NOMES_REFERENCIA[refs_ml['tipo_sinistro_simplificado']]} e {NOMES_REFERENCIA[refs_ml['turno_ajustado']]}. "
+            "Acima de 1, a chance de desfecho grave ou fatal é maior; abaixo de 1, menor. É associação, não causa."
+        )
+        with st.expander("Tabela das razões de chance"):
+            tabela_rc = rc.sort_values('razao_chance', ascending=False)
+            st.dataframe(
+                formatar_tabela(
+                    pd.DataFrame({
+                        'Variável': tabela_rc['Nome'],
+                        'Razão de chance': tabela_rc['razao_chance'],
+                        'IC 95% inferior': tabela_rc['ic_inf'],
+                        'IC 95% superior': tabela_rc['ic_sup'],
+                        'Valor-p': tabela_rc['p_valor'],
+                        'Sinistros com a característica': tabela_rc['n_casos'],
+                    }),
+                    casas={'Valor-p': 3},
+                ),
+                width="stretch", hide_index=True,
+            )
+            st.caption(f"Modelo ajustado nos {br(resultado_ml['n_total'])} sinistros da base comparável.")
 
     with col_sim:
         st.markdown("#### ⚡ Simulador Exploratório de Gravidade")
         st.caption("Estimativa da gravidade supondo que o sinistro ocorreu; não é a chance de ele ocorrer.")
 
-        s_hora = st.slider("Hora da Ocorrência:", 0, 23, 18, help="Horário aproximado do sinistro")
+        s_hora = st.slider("Hora da Ocorrência:", 0, 23, 18, help="Horário aproximado do sinistro; o modelo usa o turno correspondente.")
 
         c_s1, c_s2 = st.columns(2)
         with c_s1:
@@ -1011,7 +1111,6 @@ with tab6:
         with c_s4:
             s_tipo = st.selectbox("Tipo de Sinistro:", ["COLISAO", "CHOQUE", "ATROPELAMENTO", "OUTROS"], index=0)
 
-        # Classificar turno
         if 0 <= s_hora < 6:
             s_turno = 'MADRUGADA'
         elif 6 <= s_hora < 12:
@@ -1021,30 +1120,18 @@ with tab6:
         else:
             s_turno = 'NOITE'
 
-        # Montar vetor para predição
-        input_dict = {col: 0 for col in feat_cols}
-        input_dict['hora_num'] = s_hora
-        input_dict['envolve_moto'] = int(s_moto)
-        input_dict['envolve_auto'] = int(s_auto)
-        input_dict['envolve_pedestre'] = int(s_pedestre)
-        input_dict['envolve_bicicleta'] = int(s_bike)
-        input_dict['envolve_pesado'] = int(s_pesado)
-        input_dict['is_fim_de_semana'] = int(s_fds)
-
-        via_col = f"via_{s_via}"
-        if via_col in input_dict:
-            input_dict[via_col] = 1
-
-        tipo_col = f"tipo_{s_tipo}"
-        if tipo_col in input_dict:
-            input_dict[tipo_col] = 1
-
-        turno_col = f"turno_{s_turno}"
-        if turno_col in input_dict:
-            input_dict[turno_col] = 1
-
-        X_input = pd.DataFrame([input_dict])[feat_cols]
-        prob_grave = rf_model.predict_proba(X_input)[0, 1] * 100
+        caso_simulado = pd.DataFrame([{
+            'envolve_moto': int(s_moto),
+            'envolve_auto': int(s_auto),
+            'envolve_pedestre': int(s_pedestre),
+            'envolve_bicicleta': int(s_bike),
+            'envolve_pesado': int(s_pesado),
+            'is_fim_de_semana': int(s_fds),
+            'tipo_via_simplificado': s_via,
+            'tipo_sinistro_simplificado': s_tipo,
+            'turno_ajustado': s_turno,
+        }])
+        prob_grave = prever_probabilidade(resultado_ml, caso_simulado)[0] * 100
 
         st.markdown("---")
         st.metric(
@@ -1055,10 +1142,10 @@ with tab6:
         )
         st.progress(min(prob_grave / 100.0, 1.0))
 
-    with st.expander("🖼️ Visualizar Gráfico do Modelo (`output/graficos/importancia_features_ml.png`)"):
-        img_ml = carregar_artefato("importancia_features_ml.png")
+    with st.expander("🖼️ Visualizar Gráfico do Modelo (`output/graficos/razoes_chance_ml.png`)"):
+        img_ml = carregar_artefato("razoes_chance_ml.png")
         if img_ml:
-            st.image(img_ml, caption="Importância de permutação no Random Forest", width="stretch")
+            st.image(img_ml, caption="Razões de chance da regressão logística, com IC 95%", width="stretch")
 
 # ------------------------------------------------------------------------------
 # TAB 7: RECOMENDAÇÕES PARA GESTÃO PÚBLICA
@@ -1194,7 +1281,7 @@ with tab8:
         ("acidentes_dia_e_hora.png", "Distribuição por Dia e Hora"),
         ("tipos_e_veiculos.png", "Letalidade por Tipo e Modais"),
         ("heatmap_dia_hora.png", "Matriz de Calor Dia x Hora"),
-        ("importancia_features_ml.png", "Importância de Variáveis no Modelo")
+        ("razoes_chance_ml.png", "Razões de Chance no Modelo")
     ]
 
     for idx, (nome_arquivo, titulo_g) in enumerate(graficos_lista):

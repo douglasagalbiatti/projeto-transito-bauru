@@ -24,7 +24,7 @@ Os números abaixo usam os dados de {{ i.data_inicio }} a {{ i.data_fim }}. O [r
 - **Vias:** as vias urbanas têm {{ i.obitos_urbanas_pct|br }}% dos óbitos, e estradas e rodovias, {{ i.obitos_rodovias_pct|br }}%. {% if i.rodovia_mais_letal %}A letalidade por sinistro é maior nas rodovias ({{ i.letal_rodovia|br(1) }}%, contra {{ i.letal_urbana|br(1) }}%).{% else %}A letalidade por sinistro é de {{ i.letal_rodovia|br(1) }}% nas rodovias e {{ i.letal_urbana|br(1) }}% nas vias urbanas.{% endif %} SP-300, SP-225 e SP-294 somam {{ i.obitos_principais_pct|br }}% dos óbitos.
 - **Dias:** a média é de {{ i.teste.media_uteis|br(2) }} registros/dia em dias úteis e {{ i.teste.media_fds|br(2) }} em fins de semana (p = {{ i.teste.p_welch|br(3) }}). {% if i.teste.significativo %}A diferença entre os dois blocos é estatisticamente significativa{% else %}Isso não prova igualdade{% endif %}, e {{ i.dias_destaque[0].nome }} ({{ i.dias_destaque[0].media|br(2) }}) e {{ i.dias_destaque[1].nome }} ({{ i.dias_destaque[1].media|br(2) }}) ficam acima dos demais dias.
 - **Modais:** entre registros com modal informado, há automóvel em {{ i.modal_auto_pct|br(1) }}% e motocicleta em {{ i.modal_moto_pct|br(1) }}%. A base não liga cada vítima ao seu veículo nem traz frota, então não mede o risco de cada modal.
-- **Modelo:** {% if i.supera_referencia %}a acurácia de {{ i.acuracia_pct|br(1) }}% supera a de sempre prever a classe mais comum ({{ i.referencia_pct|br(1) }}%){% else %}a acurácia de {{ i.acuracia_pct|br(1) }}% é praticamente a de sempre prever a classe mais comum ({{ i.referencia_pct|br(1) }}%){% endif %}, com ROC-AUC de {{ i.modelo.auc|br(3) }}. O modelo é exploratório e não prevê acidentes.
+- **Modelo (regressão logística):** {% if i.supera_referencia %}a acurácia de {{ i.acuracia_pct|br(1) }}% supera a de sempre prever a classe mais comum ({{ i.referencia_pct|br(1) }}%){% else %}a acurácia de {{ i.acuracia_pct|br(1) }}% é praticamente a de sempre prever a classe mais comum ({{ i.referencia_pct|br(1) }}%){% endif %}, com ROC-AUC de {{ i.modelo.auc|br(3) }}. O modelo é exploratório e não prevê acidentes.
 
 ### Comparabilidade
 
@@ -46,7 +46,7 @@ A base não traz fluxo de veículos, frota, velocidade, alcoolemia nem o objeto 
 
 ![Registros por dia da semana e hora]({{ url }}/output/graficos/heatmap_dia_hora.png)
 
-![Importância de permutação no modelo]({{ url }}/output/graficos/importancia_features_ml.png)
+![Razões de chance no modelo de regressão logística]({{ url }}/output/graficos/razoes_chance_ml.png)
 
 O [mapa interativo](https://github.com/douglasagalbiatti/projeto-transito-bauru/blob/artefatos/output/graficos/mapa_acidentes.html) pode ser baixado em HTML ou aberto no painel.
 

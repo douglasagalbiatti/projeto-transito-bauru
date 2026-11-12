@@ -24,7 +24,7 @@ Os números abaixo usam os dados de 13/01/2015 a 30/09/2026. O [relatório técn
 - **Vias:** as vias urbanas têm 53% dos óbitos, e estradas e rodovias, 40%. A letalidade por sinistro é maior nas rodovias (6,5%, contra 1,9%). SP-300, SP-225 e SP-294 somam 35% dos óbitos.
 - **Dias:** a média é de 6,70 registros/dia em dias úteis e 6,63 em fins de semana (p = 0,634). Isso não prova igualdade, e sexta (7,75) e sábado (7,35) ficam acima dos demais dias.
 - **Modais:** entre registros com modal informado, há automóvel em 72,4% e motocicleta em 64,3%. A base não liga cada vítima ao seu veículo nem traz frota, então não mede o risco de cada modal.
-- **Modelo:** a acurácia de 88,4% é praticamente a de sempre prever a classe mais comum (88,2%), com ROC-AUC de 0,683. O modelo é exploratório e não prevê acidentes.
+- **Modelo (regressão logística):** a acurácia de 88,2% é praticamente a de sempre prever a classe mais comum (88,2%), com ROC-AUC de 0,695. O modelo é exploratório e não prevê acidentes.
 
 ### Comparabilidade
 
@@ -46,7 +46,7 @@ A base não traz fluxo de veículos, frota, velocidade, alcoolemia nem o objeto 
 
 ![Registros por dia da semana e hora](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/heatmap_dia_hora.png)
 
-![Importância de permutação no modelo](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/importancia_features_ml.png)
+![Razões de chance no modelo de regressão logística](https://raw.githubusercontent.com/douglasagalbiatti/projeto-transito-bauru/artefatos/output/graficos/razoes_chance_ml.png)
 
 O [mapa interativo](https://github.com/douglasagalbiatti/projeto-transito-bauru/blob/artefatos/output/graficos/mapa_acidentes.html) pode ser baixado em HTML ou aberto no painel.
 

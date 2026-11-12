@@ -14,6 +14,7 @@ import sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 import pandas as pd
 import plotly.express as px
 import seaborn as sns
@@ -32,7 +33,7 @@ from src.metricas import (
     ranking_vias,
     tabela_letalidade,
 )
-from src.modelo import treinar_modelo
+from src.modelo import NOMES_REFERENCIA, NOMES_VARIAVEIS_MODELO, treinar_modelo
 
 DATA_FILE = os.path.join(BASE_DIR, "data", "bauru_limpo.csv")
 GRAFICOS_DIR = os.path.join(BASE_DIR, "output", "graficos")
@@ -45,23 +46,6 @@ SAIDA_PLOTLY = "application/vnd.plotly.v1+json"
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 README_MD = os.path.join(BASE_DIR, "README.md")
 ORDEM_DIAS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
-NOMES_FEATURES = {
-    "hora_num": "Hora do sinistro",
-    "envolve_moto": "Motocicleta presente",
-    "envolve_auto": "Automóvel presente",
-    "envolve_pedestre": "Pedestre presente",
-    "envolve_bicicleta": "Bicicleta presente",
-    "envolve_pesado": "Caminhão ou ônibus presente",
-    "is_fim_de_semana": "Fim de semana",
-    "via_VIA URBANA": "Via urbana",
-    "tipo_CHOQUE": "Tipo: choque",
-    "tipo_COLISAO": "Tipo: colisão",
-    "tipo_OUTROS": "Tipo: outros",
-    "tipo_OUTROS / NAO INFORMADO": "Tipo: não informado",
-    "turno_MANHA": "Turno: manhã",
-    "turno_TARDE": "Turno: tarde",
-    "turno_NOITE": "Turno: noite",
-}
 
 
 def salvar(fig, nome):
@@ -160,14 +144,28 @@ def grafico_heatmap(df):
     salvar(fig, "heatmap_dia_hora.png")
 
 
-def grafico_importancias(resultado):
-    top = resultado["importancias"].head(10).sort_values()
-    fig, eixo = plt.subplots(figsize=(10, 6))
-    eixo.barh([NOMES_FEATURES.get(nome, nome) for nome in top.index], top.values, color="#2b5c8f")
-    eixo.set_title("Importância de permutação no modelo exploratório\nBase comparável; não indica sentido nem causa", fontweight="bold")
-    eixo.set_xlabel("Piora na log-loss ao embaralhar a variável")
-    eixo.xaxis.set_major_formatter(lambda v, _: br(v, 3))
-    salvar(fig, "importancia_features_ml.png")
+def grafico_razoes_chance(resultado):
+    rc = resultado["razoes_chance"].sort_values("razao_chance")
+    nomes = [NOMES_VARIAVEIS_MODELO.get(nome, nome) for nome in rc.index]
+    cores = ["#c0392b" if l.ic_inf > 1 else "#2b5c8f" if l.ic_sup < 1 else "#95a5a6" for l in rc.itertuples()]
+    fig, eixo = plt.subplots(figsize=(10, 7))
+    for y, (l, cor) in enumerate(zip(rc.itertuples(), cores)):
+        eixo.errorbar(l.razao_chance, y, xerr=[[l.razao_chance - l.ic_inf], [l.ic_sup - l.razao_chance]], fmt="o", color=cor, capsize=3)
+    eixo.axvline(1, color="#555555", linestyle="--", linewidth=1)
+    eixo.set_xscale("log")
+    eixo.set_yticks(range(len(nomes)), nomes)
+    marcas = [m for m in (0.25, 0.5, 1, 2, 4, 8, 16) if rc["ic_inf"].min() / 1.5 <= m <= rc["ic_sup"].max() * 1.5]
+    eixo.set_xticks(marcas, [br(m, 2 if m < 0.5 else 1) for m in marcas])
+    eixo.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+    refs = resultado["referencias"]
+    eixo.set_title(
+        "Razões de chance de desfecho grave ou fatal (regressão logística, IC 95%)\n"
+        f"Referência: {NOMES_REFERENCIA[refs['tipo_via_simplificado']]}, {NOMES_REFERENCIA[refs['tipo_sinistro_simplificado']]}, "
+        f"{NOMES_REFERENCIA[refs['turno_ajustado']]}; associação, não causa",
+        fontweight="bold",
+    )
+    eixo.set_xlabel("Razão de chance (escala logarítmica)")
+    salvar(fig, "razoes_chance_ml.png")
 
 
 def gerar_mapa(df):
@@ -224,7 +222,30 @@ def gerar_relatorio(df, indicadores):
         if i["supera_referencia"]
         else "O modelo não supera a referência de sempre prever a classe mais comum."
     )
-    importancias = ", ".join(NOMES_FEATURES.get(nome, nome).lower() for nome in resultado["importancias"].head(4).index)
+    cv = resultado["validacao_cruzada"]
+    temporal = resultado["temporal"]
+    frase_temporal = (
+        "não há anos suficientes."
+        if temporal.empty
+        else "treinado só com anos anteriores, ROC-AUC de "
+        + ", ".join(f"{br(l.auc, 3)} em {l.ano}" for l in temporal.itertuples())
+        + (f" ({temporal['ano'].max()} até {datas.max():%m/%Y})." if i["ano_parcial"] else ".")
+    )
+    rc = resultado["razoes_chance"]
+
+    def _lista_rc(linhas):
+        return "; ".join(
+            f"{NOMES_VARIAVEIS_MODELO.get(nome, nome).lower()}: {br(l.razao_chance, 2)} (IC 95%: {br(l.ic_inf, 2)} a {br(l.ic_sup, 2)})"
+            for nome, l in linhas.iterrows()
+        ) or "nenhuma"
+
+    aumentam = _lista_rc(rc[rc["ic_inf"] > 1])
+    reduzem = _lista_rc(rc[rc["ic_sup"] < 1].sort_values("razao_chance"))
+    refs = resultado["referencias"]
+    referencias_modelo = (
+        f"{NOMES_REFERENCIA[refs['tipo_via_simplificado']]}, {NOMES_REFERENCIA[refs['tipo_sinistro_simplificado']]} "
+        f"e {NOMES_REFERENCIA[refs['turno_ajustado']]}"
+    )
     vias = ranking_vias(df[df["tipo_registro"] != "NOTIFICACAO"])
     vias_obitos = ranking_vias(df[df["tipo_registro"] != "NOTIFICACAO"], por="obitos")
     frase_letalidade_via = (
@@ -308,14 +329,22 @@ Os rankings excluem notificações e são contagens brutas, sem fluxo de veícul
 
 ## 7. Modelo exploratório
 
-Random Forest com {br(resultado['n_treino'])} sinistros de treino e {br(resultado['n_teste'])} de teste, para estimar se o desfecho foi grave ou fatal ({br(resultado['prevalencia'] * 100, 1)}% dos casos).
+Regressão logística para estimar se o desfecho foi grave ou fatal ({br(resultado['prevalencia'] * 100, 1)}% dos casos). As métricas abaixo vêm de {br(resultado['n_treino'])} sinistros de treino e {br(resultado['n_teste'])} de teste; as razões de chance, do ajuste nos {br(resultado['n_total'])} sinistros da base comparável.
 
 * **Acurácia:** {br(resultado['acuracia'] * 100, 1)}%, contra {br(resultado['referencia'] * 100, 1)}% de sempre prever a classe mais comum. {aviso_modelo}
-* **Acurácia balanceada:** {br(resultado['acuracia_balanceada'] * 100, 1)}%
-* **ROC-AUC:** {br(resultado['auc'], 3)}
-* **Variáveis mais usadas (permutação):** {importancias}.
+* **Acurácia balanceada (limiar de 50%):** {br(resultado['acuracia_balanceada'] * 100, 1)}%
+* **ROC-AUC:** {br(resultado['auc'], 3)} (IC 95%: {br(resultado['auc_ic'][0], 3)} a {br(resultado['auc_ic'][1], 3)})
+* **PR-AUC:** {br(resultado['pr_auc'], 3)}, contra {br(resultado['prevalencia'], 3)} do acaso
+* **Com limiar no risco médio:** sensibilidade de {br(resultado['teste']['sensibilidade'] * 100, 1)}% e precisão de {br(resultado['teste']['precisao'] * 100, 1)}%
+* **Validação cruzada ({cv['rodadas'].iloc[0]} rodadas):** ROC-AUC de {br(cv.loc['auc', 'media'], 3)} ± {br(cv.loc['auc', 'desvio'], 3)}
+* **Validação por ano:** {frase_temporal}
 
-O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. A importância não indica sentido nem causa.
+Razões de chance com intervalo de 95%, mantendo as demais variáveis iguais (referência: {referencias_modelo}):
+
+* **Aumentam a chance de desfecho grave ou fatal:** {aumentam}.
+* **Reduzem a chance:** {reduzem}.
+
+O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. As razões de chance são associações nesta base, não causas, e fatores ausentes como velocidade e alcoolemia podem explicar parte delas.
 
 ## 8. Hipóteses para a gestão pública
 
@@ -389,7 +418,7 @@ def main():
     grafico_dia_hora(df)
     grafico_tipos_modais(df)
     grafico_heatmap(df)
-    grafico_importancias(resultado)
+    grafico_razoes_chance(resultado)
     gerar_mapa(df)
     gerar_relatorio(df, indicadores)
     gerar_readme(indicadores)

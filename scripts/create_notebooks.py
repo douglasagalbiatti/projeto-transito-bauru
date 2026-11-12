@@ -233,7 +233,7 @@ Neste notebook desenvolvemos as análises centrais:
 2. Comparação entre dias úteis e fins de semana (teste de Welch), com todos os dias do calendário;
 3. Letalidade por tipo de sinistro e por tipo de via, na base comparável;
 4. Matriz de calor dia vs hora;
-5. Modelo exploratório (**Random Forest**), comparado à referência de sempre prever a classe mais comum.
+5. Modelo exploratório (**regressão logística**), com razões de chance e validação cruzada e por ano.
 
 **Base comparável:** sinistros de 2019 em diante, sem notificações. As regras estão em `src/metricas.py` e `src/modelo.py`, usadas também pelo painel e pelo relatório."""),
 
@@ -327,18 +327,32 @@ plt.ylabel('Dia da Semana')
 plt.tight_layout()
 plt.show()"""),
 
-    nbf.v4.new_markdown_cell("""## 5. Modelo Exploratório (Random Forest)
-O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. A importância de permutação não indica sentido nem causa."""),
+    nbf.v4.new_markdown_cell("""## 5. Modelo Exploratório (Regressão Logística)
+O modelo usa dados conhecidos só depois do sinistro, então não prevê acidentes. As razões de chance são associações ajustadas pelas demais variáveis, não causas."""),
 
     nbf.v4.new_code_cell("""resultado = treinar_modelo(df)
 print(f"Acurácia: {resultado['acuracia']:.3f} | Sempre prever a classe mais comum: {resultado['referencia']:.3f}")
 print(f"Acurácia balanceada: {resultado['acuracia_balanceada']:.3f} | ROC-AUC: {resultado['auc']:.3f}")
+print(f"PR-AUC: {resultado['pr_auc']:.3f} (acaso: {resultado['prevalencia']:.3f})")
 
-top = resultado['importancias'].head(10)
-plt.figure(figsize=(9, 5))
-sns.barplot(x=top.values, y=top.index, color='#2b5c8f')
-plt.title('Top 10 Variáveis por Importância de Permutação')
-plt.xlabel('Piora na log-loss ao embaralhar a variável')
+print("\\nValidação cruzada estratificada repetida (média ± desvio):")
+print(resultado['validacao_cruzada'][['media', 'desvio']].round(3))
+
+print("\\nValidação por ano (treino com os anos anteriores):")
+print(resultado['temporal'][['ano', 'anos_treino', 'n_teste', 'prevalencia', 'auc', 'pr_auc', 'sensibilidade', 'precisao']].round(3).to_string(index=False))
+
+print("\\nReferências:", resultado['referencias'])
+rc = resultado['razoes_chance']
+print(rc.round(3).to_string())
+
+rc = rc.sort_values('razao_chance')
+plt.figure(figsize=(9, 6))
+plt.errorbar(rc['razao_chance'], range(len(rc)), xerr=[rc['razao_chance'] - rc['ic_inf'], rc['ic_sup'] - rc['razao_chance']], fmt='o', color='#2b5c8f', capsize=3)
+plt.axvline(1, color='gray', linestyle='--')
+plt.xscale('log')
+plt.yticks(range(len(rc)), rc.index)
+plt.title('Razões de chance de desfecho grave ou fatal (IC 95%)')
+plt.xlabel('Razão de chance (escala logarítmica)')
 plt.tight_layout()
 plt.show()""")
 ]
